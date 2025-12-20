@@ -46,7 +46,7 @@ class PatientDashboardScreen extends StatelessWidget {
           _buildMenuItem(
             context,
             title: 'Parathyroid Investigations',
-            icon: Icons.paypal_sharp,
+            icon: Icons.shield_moon_sharp,
             color: Colors.purple.shade100,
             iconColor: Colors.purple.shade900,
             destination: ParathyroidScreen(
