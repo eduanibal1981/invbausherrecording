@@ -1,0 +1,71 @@
+name: Deploy FlutterFlow Web (Cache-Safe & Versioned)
+
+on:
+  push:
+    branches:
+      - flutterflow
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2️⃣ Install Flutter
+      - name: Install Flutter 3.32.4
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.4"
+          channel: stable
+          architecture: x64
+
+      # 3️⃣ Mark Flutter directory as safe
+      - name: Mark Flutter directory as safe
+        run: |
+         git config --global --add safe.directory /opt/hostedtoolcache/flutter
+         git config --global --add safe.directory $GITHUB_WORKSPACE
+
+      # 4️⃣ Flutter version
+      - name: Flutter version
+        run: flutter --version
+
+      # 5️⃣ Install dependencies
+      - name: Install dependencies
+        run: |
+          flutter clean
+          flutter pub get
+
+      # 6️⃣ Build Flutter Web with hash strategy (prevents caching issues)
+      - name: Build Flutter web
+        run: flutter build web --release --base-href="/bausherinvrecording/"
+
+      # 7️⃣ Debug: List build/web contents
+      - name: List build/web folder contents
+        run: ls -R build/web
+
+      # 8️⃣ Deploy to root (latest version)
+      - name: Deploy to GitHub Pages (latest)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: build/web
+          force_orphan: true
+
+      # 9️⃣ Deploy to versioned folder (only if tag is pushed)
+      - name: Deploy to GitHub Pages (versioned)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: build/web
+          destination_dir: ${{ github.ref_name }}  # e.g., v1.0.0
