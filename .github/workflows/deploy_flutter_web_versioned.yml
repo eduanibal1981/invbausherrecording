@@ -3,7 +3,7 @@ name: Deploy FlutterFlow Web (Cache-Safe & Versioned)
 on:
   push:
     branches:
-      - flutterflow
+      - main
     tags:
       - 'v*.*.*'
 
@@ -45,7 +45,7 @@ jobs:
 
       # 6️⃣ Build Flutter Web with hash strategy (prevents caching issues)
       - name: Build Flutter web
-        run: flutter build web --release --base-href="/bausherinvrecording/"
+        run: flutter build web --release --base-href="/invbausherrecording/"
 
       # 7️⃣ Debug: List build/web contents
       - name: List build/web folder contents
