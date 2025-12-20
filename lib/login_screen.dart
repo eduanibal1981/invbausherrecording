@@ -64,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(
-                  Icons.medical_services,
+                  Icons.shield_moon_sharp,
                   size: 64,
                   color: Colors.teal,
                 ),
