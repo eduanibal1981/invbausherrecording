@@ -278,7 +278,14 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                           SwitchListTile(
                             title: const Text('Reviewed by Dr'),
                             value: _isDrRevBw,
-                            activeThumbColor: Colors.green,
+                            thumbColor: WidgetStateProperty.resolveWith((
+                              states,
+                            ) {
+                              if (states.contains(WidgetState.selected)) {
+                                return Colors.green;
+                              }
+                              return null;
+                            }),
                             onChanged: (val) => setState(() {
                               _isDrRevBw = val;
                               _hasUnsavedChanges = true;

@@ -120,7 +120,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
           _currentStaff != null ? 'Hi ${_currentStaff!['name']}' : 'Patients',
           style: const TextStyle(fontSize: 16), // Reduced font size
         ),
-        backgroundColor: const Color.fromARGB(255, 40, 147, 173),
+        backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
         actions: [
           if (_currentStaff != null)
