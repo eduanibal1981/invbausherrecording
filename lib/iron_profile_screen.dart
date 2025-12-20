@@ -184,7 +184,22 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
   Widget build(BuildContext context) {
     print('IronProfile StaffRole: ${widget.staffRole}');
     return Scaffold(
-      appBar: AppBar(title: const Text('Iron Profile Investigations')),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.patient['name'] ?? 'Unknown'),
+            Text(
+              'ID: ${widget.patient['pcid']}',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const Text(
+              '           Iron Profile Investigations',
+              style: TextStyle(fontSize: 14),
+            ),
+          ],
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showEditDialog(),
         child: const Icon(Icons.add),

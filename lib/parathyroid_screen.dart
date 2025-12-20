@@ -174,7 +174,22 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Parathyroid Investigations')),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.patient['name'] ?? 'Unknown'),
+            Text(
+              'ID: ${widget.patient['pcid']}',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const Text(
+              '           Parathyroid Investigations',
+              style: TextStyle(fontSize: 14),
+            ),
+          ],
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showEditDialog(),
         child: const Icon(Icons.add),
