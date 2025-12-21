@@ -199,7 +199,7 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
           Padding(
             padding: const EdgeInsets.all(16),
             child: DropdownButtonFormField<int>(
-              value: _selectedYear,
+              initialValue: _selectedYear,
               decoration: const InputDecoration(
                 labelText: 'Filter by Year',
                 border: OutlineInputBorder(),
@@ -261,7 +261,7 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
                                       height: 30,
                                       child: Switch(
                                         value: rec['isdrrevpth'] ?? false,
-                                        activeColor: Colors.green,
+                                        activeThumbColor: Colors.green,
                                         onChanged: (val) =>
                                             _updateStatus(rec, val, index),
                                       ),
