@@ -209,7 +209,7 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
           Padding(
             padding: const EdgeInsets.all(16),
             child: DropdownButtonFormField<int>(
-              initialValue: _selectedYear,
+              value: _selectedYear,
               decoration: const InputDecoration(
                 labelText: 'Filter by Year',
                 border: OutlineInputBorder(),
@@ -269,7 +269,7 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
                                       height: 30,
                                       child: Switch(
                                         value: rec['isdrreviron'] ?? false,
-                                        activeThumbColor: Colors.green,
+                                        activeColor: Colors.green,
                                         onChanged: (val) =>
                                             _updateStatus(rec, val, index),
                                       ),

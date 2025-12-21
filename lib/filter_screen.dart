@@ -85,7 +85,7 @@ class _FilterScreenState extends State<FilterScreen> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    initialValue: _hallName,
+                    value: _hallName,
                     decoration: InputDecoration(
                       labelText: 'Hall Name',
                       filled: true,
@@ -120,7 +120,7 @@ class _FilterScreenState extends State<FilterScreen> {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          initialValue: _day,
+                          value: _day,
                           decoration: InputDecoration(
                             labelText: 'Day',
                             filled: true,
@@ -156,7 +156,7 @@ class _FilterScreenState extends State<FilterScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          initialValue: _shift,
+                          value: _shift,
                           decoration: InputDecoration(
                             labelText: 'Shift',
                             filled: true,
