@@ -326,7 +326,12 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                                         'MMMM',
                                                       ).format(DateTime.now()))
                                                   ? Colors.green
-                                                  : Colors.red.shade200,
+                                                  : const Color.fromARGB(
+                                                      255,
+                                                      247,
+                                                      152,
+                                                      152,
+                                                    ),
                                             ),
                                           ),
                                         ),
