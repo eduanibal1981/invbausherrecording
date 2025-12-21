@@ -292,15 +292,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                             }),
                           ),
                         ]),
-                      // _buildSection('Status', [
-                      //   SwitchListTile(
-                      //     title: const Text('Need Collection'),
-                      //     value: _needCollect,
-                      //     onChanged: (val) =>
-                      //         setState(() => _needCollect = val),
-                      //   ),
-                      //   _buildTextField('Staff Entered', 'staffenter'),
-                      // ]),
+
                       _buildSection('CBC', ['cbchb']),
                       _buildSection('Bone Profile', ['bca', 'bpo4']),
                       _buildSection('Renal & Urea', [
