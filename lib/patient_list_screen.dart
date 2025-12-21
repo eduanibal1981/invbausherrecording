@@ -129,7 +129,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
                 const Text('My Patients', style: TextStyle(fontSize: 12)),
                 Switch(
                   value: _showMyPatientsOnly,
-                  activeColor: Colors.amber,
+                  activeThumbColor: Colors.amber,
                   onChanged: (val) => setState(() => _showMyPatientsOnly = val),
                 ),
               ],

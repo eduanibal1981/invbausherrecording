@@ -227,7 +227,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<int>(
-                    value: _selectedYear,
+                    initialValue: _selectedYear,
                     decoration: const InputDecoration(labelText: 'Year'),
                     items: List.generate(10, (index) => 2024 + index)
                         .map(
@@ -245,7 +245,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _selectedMonth,
+                    initialValue: _selectedMonth,
                     decoration: const InputDecoration(labelText: 'Month'),
                     items: _months
                         .map((m) => DropdownMenuItem(value: m, child: Text(m)))
@@ -292,15 +292,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                             }),
                           ),
                         ]),
-                      // _buildSection('Status', [
-                      //   SwitchListTile(
-                      //     title: const Text('Need Collection'),
-                      //     value: _needCollect,
-                      //     onChanged: (val) =>
-                      //         setState(() => _needCollect = val),
-                      //   ),
-                      //   _buildTextField('Staff Entered', 'staffenter'),
-                      // ]),
+
                       _buildSection('CBC', ['cbchb']),
                       _buildSection('Bone Profile', ['bca', 'bpo4']),
                       _buildSection('Renal & Urea', [
