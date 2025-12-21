@@ -159,7 +159,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Filtering by: ${_filters.values.join(", ")}',
+                      'Filtering by: ${_filters.entries.map((e) => e.key == 'showLabNotRecorded' ? 'Lab Not Recorded' : e.value).join(", ")}',
                       style: TextStyle(color: Colors.teal.shade900),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -218,6 +218,17 @@ class _PatientListScreenState extends State<PatientListScreen> {
                     final name = (p['name'] ?? '').toString().toLowerCase();
                     final id = p['pcid'].toString();
                     return name.contains(query) || id.contains(query);
+                  }).toList();
+                }
+
+                // 4. Apply Lab Not Recorded Filter
+                if (_filters['showLabNotRecorded'] == true) {
+                  final currentMonth = DateFormat(
+                    'MMMM',
+                  ).format(DateTime.now());
+                  patients = patients.where((p) {
+                    final lastBw = p['lastbwcollected']?.toString() ?? '';
+                    return lastBw != currentMonth;
                   }).toList();
                 }
 

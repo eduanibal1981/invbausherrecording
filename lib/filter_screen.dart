@@ -14,6 +14,7 @@ class _FilterScreenState extends State<FilterScreen> {
   String? _hallName;
   String? _day;
   String? _shift;
+  bool _showLabNotRecorded = false;
 
   @override
   void initState() {
@@ -22,6 +23,7 @@ class _FilterScreenState extends State<FilterScreen> {
     _hallName = widget.initialFilters['hallname'];
     _day = widget.initialFilters['day'];
     _shift = widget.initialFilters['shift'];
+    _showLabNotRecorded = widget.initialFilters['showLabNotRecorded'] ?? false;
   }
 
   @override
@@ -37,6 +39,7 @@ class _FilterScreenState extends State<FilterScreen> {
       if (_hallName != null) 'hallname': _hallName,
       if (_day != null) 'day': _day,
       if (_shift != null) 'shift': _shift,
+      if (_showLabNotRecorded) 'showLabNotRecorded': true,
     });
   }
 
@@ -180,6 +183,23 @@ class _FilterScreenState extends State<FilterScreen> {
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 0,
+            color: Colors.orange.shade50,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.orange.shade100),
+            ),
+            child: CheckboxListTile(
+              title: const Text('Show Patients Last Lab not Recorded'),
+              subtitle: const Text('Lab not recorded this month'),
+              value: _showLabNotRecorded,
+              activeColor: Colors.orange,
+              onChanged: (val) =>
+                  setState(() => _showLabNotRecorded = val ?? false),
             ),
           ),
           const SizedBox(height: 32),
