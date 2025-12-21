@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
-import 'patient_dashboard_screen.dart';
+//import 'patient_dashboard_screen.dart';
 import 'filter_screen.dart';
+import 'patient_dashboard_screen_v2.dart';
 
 class PatientListScreen extends StatefulWidget {
   const PatientListScreen({super.key});
@@ -275,7 +276,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) =>
-                                              PatientDashboardScreen(
+                                              PatientDashboardScreenV2(
                                                 patient: patient,
                                                 staffRole:
                                                     _currentStaff?['staffrole'],
