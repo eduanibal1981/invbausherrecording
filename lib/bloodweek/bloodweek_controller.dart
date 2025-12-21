@@ -7,6 +7,27 @@ class BloodWeekController extends ChangeNotifier {
 
   final List<String> fields;
   final Map<String, TextEditingController> controllers = {};
+  static final Map<String, BloodWeekModel> _cache = {};
+
+  String _cacheKey(int pcid) => '$pcid-$selectedYear-$selectedMonth';
+
+  static const List<String> months = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  int selectedYear = DateTime.now().year;
+  String selectedMonth = months[DateTime.now().month - 1];
 
   bool isLoading = false;
   bool hasUnsavedChanges = false;
@@ -14,6 +35,13 @@ class BloodWeekController extends ChangeNotifier {
   bool isDrRevBw = false;
 
   int? existingRecordId;
+
+  /// Public method to set isDrRevBw and mark as unsaved
+  void setDrReview(bool value) {
+    isDrRevBw = value;
+    hasUnsavedChanges = true;
+    notifyListeners();
+  }
 
   BloodWeekController(this.fields) {
     for (final f in fields) {
@@ -30,42 +58,82 @@ class BloodWeekController extends ChangeNotifier {
     }
   }
 
-  Future<void> fetchData({
-    required int pcid,
-    required int year,
-    required int month,
-  }) async {
+  Future<void> fetchData(int pcid) async {
     isLoading = true;
     notifyListeners();
 
-    final response = await supabase
-        .from('bloodweek')
-        .select()
-        .eq('pcid', pcid)
-        .eq('year', year)
-        .eq('month', month)
-        .maybeSingle();
+    final key = _cacheKey(pcid);
 
-    if (response != null) {
-      final model = BloodWeekModel.fromMap(response, fields);
+    try {
+      final response = await supabase
+          .from('bloodweek')
+          .select()
+          .eq('pcid', pcid)
+          .eq('year', selectedYear)
+          .eq('month', selectedMonth)
+          .maybeSingle();
 
-      existingRecordId = model.id;
-      needCollect = model.needCollect;
-      isDrRevBw = model.isDrRevBw;
+      if (response != null) {
+        final model = BloodWeekModel.fromMap(response, fields);
 
-      // 🔥 CRITICAL OPTIMIZATION
-      for (final f in fields) {
-        controllers[f]!
-          ..removeListener(_onFieldChanged)
-          ..text = model.values[f]?.toString() ?? ''
-          ..addListener(_onFieldChanged);
+        _cache[key] = model; // ✅ cache it
+        _applyModel(model);
+      } else {
+        _clearForm();
       }
-
-      hasUnsavedChanges = false;
+    } catch (_) {
+      // 🔥 OFFLINE FALLBACK
+      if (_cache.containsKey(key)) {
+        _applyModel(_cache[key]!);
+      }
     }
 
     isLoading = false;
     notifyListeners();
+  }
+
+  Future<void> saveData(int pcid) async {
+    isLoading = true;
+    notifyListeners();
+
+    final data = {
+      'pcid': pcid,
+      'year': selectedYear,
+      'month': selectedMonth,
+      'needcolect': needCollect,
+      'isdrrevbw': isDrRevBw,
+      for (var f in fields)
+        f: f == 'staffenter'
+            ? controllers[f]!.text
+            : double.tryParse(controllers[f]!.text),
+    };
+
+    if (existingRecordId != null) {
+      await supabase.from('bloodweek').update(data).eq('id', existingRecordId!);
+    } else {
+      await supabase.from('bloodweek').insert(data);
+    }
+
+    await fetchData(pcid);
+  }
+
+  void changeYear(int year, int pcid) {
+    selectedYear = year;
+    fetchData(pcid);
+  }
+
+  void changeMonth(String month, int pcid) {
+    selectedMonth = month;
+    fetchData(pcid);
+  }
+
+  void _clearForm() {
+    existingRecordId = null;
+    isDrRevBw = false;
+    needCollect = false;
+    for (final c in controllers.values) {
+      c.clear();
+    }
   }
 
   @override
@@ -74,5 +142,20 @@ class BloodWeekController extends ChangeNotifier {
       c.dispose();
     }
     super.dispose();
+  }
+
+  void _applyModel(BloodWeekModel model) {
+    existingRecordId = model.id;
+    needCollect = model.needCollect;
+    isDrRevBw = model.isDrRevBw;
+
+    for (final f in fields) {
+      controllers[f]!
+        ..removeListener(_onFieldChanged)
+        ..text = model.values[f]?.toString() ?? ''
+        ..addListener(_onFieldChanged);
+    }
+
+    hasUnsavedChanges = false;
   }
 }
