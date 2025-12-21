@@ -92,7 +92,9 @@ class BloodWeekController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> saveData(int pcid) async {
+  /// Saves data to Supabase.
+  /// Returns null on success, or an error message on failure.
+  Future<String?> saveData(int pcid) async {
     isLoading = true;
     notifyListeners();
 
@@ -108,13 +110,23 @@ class BloodWeekController extends ChangeNotifier {
             : double.tryParse(controllers[f]!.text),
     };
 
-    if (existingRecordId != null) {
-      await supabase.from('bloodweek').update(data).eq('id', existingRecordId!);
-    } else {
-      await supabase.from('bloodweek').insert(data);
-    }
+    try {
+      if (existingRecordId != null) {
+        await supabase
+            .from('bloodweek')
+            .update(data)
+            .eq('id', existingRecordId!);
+      } else {
+        await supabase.from('bloodweek').insert(data);
+      }
 
-    await fetchData(pcid);
+      await fetchData(pcid);
+      return null; // Success
+    } catch (e) {
+      isLoading = false;
+      notifyListeners();
+      return 'Save failed: ${e.toString().contains('SocketException') || e.toString().contains('ClientException') ? 'No internet connection' : e.toString()}';
+    }
   }
 
   void changeYear(int year, int pcid) {

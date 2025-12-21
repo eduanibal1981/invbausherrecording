@@ -130,9 +130,28 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                       ),
                       onPressed: c.isLoading
                           ? null
-                          : () {
+                          : () async {
                               if (_formKey.currentState!.validate()) {
-                                c.saveData(widget.patient['pcid']);
+                                final error = await c.saveData(
+                                  widget.patient['pcid'],
+                                );
+                                if (!context.mounted) return;
+
+                                if (error != null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(error),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Saved successfully!'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
                               }
                             },
                     ),
