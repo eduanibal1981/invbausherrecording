@@ -6,7 +6,19 @@ class BloodWeekScreen extends StatefulWidget {
   final Map<String, dynamic> patient;
   final String? staffRole;
 
-  const BloodWeekScreen({super.key, required this.patient, this.staffRole});
+  /// Optional: list of patients for navigation (from filtered list)
+  final List<Map<String, dynamic>>? patientList;
+
+  /// Optional: current index in the patient list
+  final int? currentIndex;
+
+  const BloodWeekScreen({
+    super.key,
+    required this.patient,
+    this.staffRole,
+    this.patientList,
+    this.currentIndex,
+  });
 
   @override
   State<BloodWeekScreen> createState() => _BloodWeekScreenState();
@@ -15,6 +27,10 @@ class BloodWeekScreen extends StatefulWidget {
 class _BloodWeekScreenState extends State<BloodWeekScreen> {
   final _formKey = GlobalKey<FormState>();
   late BloodWeekController controller;
+
+  // Current patient (can change via navigation)
+  late Map<String, dynamic> _currentPatient;
+  late int _currentIndex;
 
   static const List<String> _fields = [
     'cbchb',
@@ -49,13 +65,21 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
     'staffenter': 'Staff Enter',
   };
 
+  bool get _hasNavigation =>
+      widget.patientList != null && widget.patientList!.length > 1;
+  bool get _canGoPrevious => _hasNavigation && _currentIndex > 0;
+  bool get _canGoNext =>
+      _hasNavigation && _currentIndex < widget.patientList!.length - 1;
+
   @override
   void initState() {
     super.initState();
+    _currentPatient = widget.patient;
+    _currentIndex = widget.currentIndex ?? 0;
     controller = BloodWeekController(_fields);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      controller.fetchData(widget.patient['pcid']);
+      controller.fetchData(_currentPatient['pcid']);
     });
   }
 
@@ -63,6 +87,50 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
   void dispose() {
     controller.dispose();
     super.dispose();
+  }
+
+  /// Navigate to another patient in the list
+  void _navigateToPatient(int newIndex) {
+    if (controller.hasUnsavedChanges) {
+      _showUnsavedChangesDialog(() {
+        _doNavigate(newIndex);
+      });
+    } else {
+      _doNavigate(newIndex);
+    }
+  }
+
+  void _doNavigate(int newIndex) {
+    setState(() {
+      _currentIndex = newIndex;
+      _currentPatient = widget.patientList![newIndex];
+    });
+    controller.fetchData(_currentPatient['pcid']);
+  }
+
+  void _showUnsavedChangesDialog(VoidCallback onDiscard) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unsaved changes'),
+        content: const Text(
+          'You have unsaved changes. Do you want to discard them?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              onDiscard();
+            },
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -97,22 +165,68 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
               );
 
               if (shouldPop == true && context.mounted) {
-                Navigator.of(context).pop();
+                Navigator.of(context).pop(_currentIndex);
               }
             },
             child: Scaffold(
               appBar: AppBar(
+                leading: _hasNavigation
+                    ? IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () {
+                          if (controller.hasUnsavedChanges) {
+                            _showUnsavedChangesDialog(() {
+                              Navigator.of(context).pop(_currentIndex);
+                            });
+                          } else {
+                            Navigator.of(context).pop(_currentIndex);
+                          }
+                        },
+                      )
+                    : null,
                 title: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(widget.patient['name'] ?? 'Unknown'),
-                    Text(
-                      'ID: ${widget.patient['pcid']}',
-                      style: const TextStyle(fontSize: 12),
+                    Text(_currentPatient['name'] ?? 'Unknown'),
+                    Row(
+                      children: [
+                        Text(
+                          'ID: ${_currentPatient['pcid']}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        if (_hasNavigation) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            '(${_currentIndex + 1}/${widget.patientList!.length})',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color.fromARGB(179, 97, 118, 240),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
                 actions: [
+                  // Navigation buttons (only if patientList is provided)
+                  if (_hasNavigation) ...[
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios),
+                      onPressed: _canGoPrevious
+                          ? () => _navigateToPatient(_currentIndex - 1)
+                          : null,
+                      tooltip: 'Previous Patient',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.arrow_forward_ios),
+                      onPressed: _canGoNext
+                          ? () => _navigateToPatient(_currentIndex + 1)
+                          : null,
+                      tooltip: 'Next Patient',
+                    ),
+                  ],
+                  // Save button
                   Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: FilledButton.icon(
@@ -133,7 +247,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                           : () async {
                               if (_formKey.currentState!.validate()) {
                                 final error = await c.saveData(
-                                  widget.patient['pcid'],
+                                  _currentPatient['pcid'],
                                 );
                                 if (!context.mounted) return;
 

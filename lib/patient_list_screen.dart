@@ -324,6 +324,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                                   patient: patient,
                                                   staffRole:
                                                       _currentStaff?['staffrole'],
+                                                  patientList: patients,
+                                                  currentIndex: index,
                                                 ),
                                           ),
                                         );
