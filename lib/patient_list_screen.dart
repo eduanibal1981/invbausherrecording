@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
-//import 'patient_dashboard_screen.dart';
 import 'filter_screen.dart';
 import 'patient_dashboard_screen_v2.dart';
 
@@ -22,10 +21,14 @@ class _PatientListScreenState extends State<PatientListScreen> {
   Map<String, dynamic>? _currentStaff;
   bool _showMyPatientsOnly = false;
 
+  // Future for patients data
+  late Future<List<Map<String, dynamic>>> _patientsFuture;
+
   @override
   void initState() {
     super.initState();
     _fetchStaffDetails();
+    _patientsFuture = _fetchPatients();
   }
 
   Future<void> _fetchStaffDetails() async {
@@ -44,15 +47,26 @@ class _PatientListScreenState extends State<PatientListScreen> {
     }
   }
 
-  Future<void> _logout() async {
-    await Supabase.instance.client.auth.signOut();
+  Future<List<Map<String, dynamic>>> _fetchPatients() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('patients')
+          .select()
+          .eq('status', 'Active');
+      return List<Map<String, dynamic>>.from(response as List);
+    } catch (e) {
+      throw Exception('Failed to load patients: $e');
+    }
   }
 
-  Stream<List<Map<String, dynamic>>> get _patientsStream {
-    return Supabase.instance.client
-        .from('patients')
-        .stream(primaryKey: ['pcid'])
-        .eq('status', 'Active');
+  void _refreshPatients() {
+    setState(() {
+      _patientsFuture = _fetchPatients();
+    });
+  }
+
+  Future<void> _logout() async {
+    await Supabase.instance.client.auth.signOut();
   }
 
   Future<void> _openFilter() async {
@@ -113,13 +127,55 @@ class _PatientListScreenState extends State<PatientListScreen> {
     }
   }
 
+  List<Map<String, dynamic>> _applyClientSideFilters(
+    List<Map<String, dynamic>> allPatients,
+  ) {
+    var patients = allPatients;
+
+    // 1. Apply Schedule Filters
+    if (_filteredPcids != null) {
+      patients = patients
+          .where((p) => _filteredPcids!.contains(p['pcid']))
+          .toList();
+    }
+
+    // 2. Apply My Patients Filter
+    if (_showMyPatientsOnly && _currentStaff != null) {
+      final staffId = _currentStaff!['medicalstaffid'];
+      patients = patients
+          .where((p) => p['dstaffid'] == staffId || p['nstaffid'] == staffId)
+          .toList();
+    }
+
+    // 3. Apply Search Filter
+    if (_filters['search'] != null && _filters['search'].isNotEmpty) {
+      final query = _filters['search'].toString().toLowerCase();
+      patients = patients.where((p) {
+        final name = (p['name'] ?? '').toString().toLowerCase();
+        final id = p['pcid'].toString();
+        return name.contains(query) || id.contains(query);
+      }).toList();
+    }
+
+    // 4. Apply Lab Not Recorded Filter
+    if (_filters['showLabNotRecorded'] == true) {
+      final currentMonth = DateFormat('MMMM').format(DateTime.now());
+      patients = patients.where((p) {
+        final lastBw = p['lastbwcollected']?.toString() ?? '';
+        return lastBw != currentMonth;
+      }).toList();
+    }
+
+    return patients;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
           _currentStaff != null ? 'Hi ${_currentStaff!['name']}' : 'Patients',
-          style: const TextStyle(fontSize: 16), // Reduced font size
+          style: const TextStyle(fontSize: 16),
         ),
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
@@ -141,6 +197,11 @@ class _PatientListScreenState extends State<PatientListScreen> {
               color: _filters.isNotEmpty ? Colors.amber : Colors.white,
             ),
             onPressed: _openFilter,
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshPatients,
+            tooltip: 'Refresh',
           ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -178,60 +239,36 @@ class _PatientListScreenState extends State<PatientListScreen> {
               ),
             ),
           Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _patientsStream,
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _patientsFuture,
               builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                if (!snapshot.hasData) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                // Filter the list client-side
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Error: ${snapshot.error}'),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _refreshPatients,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Center(child: Text('No patients found.'));
+                }
+
+                // Apply all client-side filters
                 final allPatients = snapshot.data!;
-                var patients = allPatients;
-
-                // 1. Apply Schedule Filters
-                if (_filteredPcids != null) {
-                  patients = patients
-                      .where((p) => _filteredPcids!.contains(p['pcid']))
-                      .toList();
-                }
-
-                // 2. Apply My Patients Filter
-                if (_showMyPatientsOnly && _currentStaff != null) {
-                  final staffId = _currentStaff!['medicalstaffid'];
-                  patients = patients
-                      .where(
-                        (p) =>
-                            p['dstaffid'] == staffId ||
-                            p['nstaffid'] == staffId,
-                      )
-                      .toList();
-                }
-
-                // 3. Apply Search Filter
-                if (_filters['search'] != null &&
-                    _filters['search'].isNotEmpty) {
-                  final query = _filters['search'].toString().toLowerCase();
-                  patients = patients.where((p) {
-                    final name = (p['name'] ?? '').toString().toLowerCase();
-                    final id = p['pcid'].toString();
-                    return name.contains(query) || id.contains(query);
-                  }).toList();
-                }
-
-                // 4. Apply Lab Not Recorded Filter
-                if (_filters['showLabNotRecorded'] == true) {
-                  final currentMonth = DateFormat(
-                    'MMMM',
-                  ).format(DateTime.now());
-                  patients = patients.where((p) {
-                    final lastBw = p['lastbwcollected']?.toString() ?? '';
-                    return lastBw != currentMonth;
-                  }).toList();
-                }
+                final patients = _applyClientSideFilters(allPatients);
 
                 return Column(
                   children: [
@@ -253,113 +290,123 @@ class _PatientListScreenState extends State<PatientListScreen> {
                     ),
                     Expanded(
                       child: patients.isEmpty
-                          ? const Center(child: Text('No patients found.'))
-                          : ListView.separated(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: patients.length,
-                              separatorBuilder: (context, index) =>
-                                  const SizedBox(height: 12),
-                              itemBuilder: (context, index) {
-                                final patient = patients[index];
-                                return Card(
-                                  elevation: 4,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                      vertical: 8,
-                                    ),
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              PatientDashboardScreenV2(
-                                                patient: patient,
-                                                staffRole:
-                                                    _currentStaff?['staffrole'],
-                                              ),
-                                        ),
-                                      );
-                                    },
-                                    leading: CircleAvatar(
-                                      backgroundColor: Colors.teal.shade100,
-                                      child: Text(
-                                        (patient['name'] as String?)
-                                                ?.substring(0, 1)
-                                                .toUpperCase() ??
-                                            '?',
-                                        style: TextStyle(
-                                          color: Colors.teal.shade900,
-                                        ),
-                                      ),
-                                    ),
-                                    title: Text(
-                                      patient['name'] ?? 'Unknown Name',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      'ID: ${patient['pcid']}',
-                                      style: TextStyle(
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        // BW Collected Indicator
-                                        Tooltip(
-                                          message:
-                                              'Last BW: ${patient['lastbwcollected'] ?? 'N/A'}',
-                                          child: Container(
-                                            width: 22,
-                                            height: 22,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color:
-                                                  (patient['lastbwcollected'] ==
-                                                      DateFormat(
-                                                        'MMMM',
-                                                      ).format(DateTime.now()))
-                                                  ? Colors.green
-                                                  : Colors.red.shade200,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        // Doctor Reviewed Indicator
-                                        Tooltip(
-                                          message:
-                                              'Doctor Reviewed: ${patient['isdrreviwed'] == true ? "Yes" : "No"}',
-                                          child: Container(
-                                            width: 18,
-                                            height: 18,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.rectangle,
-                                              color:
-                                                  (patient['isdrreviwed'] ==
-                                                      true)
-                                                  ? Colors.green
-                                                  : Colors.red.shade200,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        const Icon(
-                                          Icons.arrow_forward_ios,
-                                          size: 16,
-                                          color: Colors.grey,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
+                          ? const Center(
+                              child: Text('No patients match the filters.'),
+                            )
+                          : RefreshIndicator(
+                              onRefresh: () async {
+                                _refreshPatients();
                               },
+                              child: ListView.separated(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: patients.length,
+                                separatorBuilder: (context, index) =>
+                                    const SizedBox(height: 12),
+                                itemBuilder: (context, index) {
+                                  final patient = patients[index];
+                                  return Card(
+                                    elevation: 4,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: ListTile(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 20,
+                                            vertical: 8,
+                                          ),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                PatientDashboardScreenV2(
+                                                  patient: patient,
+                                                  staffRole:
+                                                      _currentStaff?['staffrole'],
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                      leading: CircleAvatar(
+                                        backgroundColor: Colors.teal.shade100,
+                                        child: Text(
+                                          (patient['name'] as String?)
+                                                  ?.substring(0, 1)
+                                                  .toUpperCase() ??
+                                              '?',
+                                          style: TextStyle(
+                                            color: Colors.teal.shade900,
+                                          ),
+                                        ),
+                                      ),
+                                      title: Text(
+                                        patient['name'] ?? 'Unknown Name',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        'ID: ${patient['pcid']}',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          // BW Collected Indicator
+                                          Tooltip(
+                                            message:
+                                                'Last BW: ${patient['lastbwcollected'] ?? 'N/A'}',
+                                            child: Container(
+                                              width: 22,
+                                              height: 22,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color:
+                                                    (patient['lastbwcollected'] ==
+                                                        DateFormat(
+                                                          'MMMM',
+                                                        ).format(
+                                                          DateTime.now(),
+                                                        ))
+                                                    ? Colors.green
+                                                    : Colors.red.shade200,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          // Doctor Reviewed Indicator
+                                          Tooltip(
+                                            message:
+                                                'Doctor Reviewed: ${patient['isdrreviwed'] == true ? "Yes" : "No"}',
+                                            child: Container(
+                                              width: 18,
+                                              height: 18,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.rectangle,
+                                                color:
+                                                    (patient['isdrreviwed'] ==
+                                                        true)
+                                                    ? Colors.green
+                                                    : Colors.red.shade200,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          const Icon(
+                                            Icons.arrow_forward_ios,
+                                            size: 16,
+                                            color: Colors.grey,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
                     ),
                   ],
