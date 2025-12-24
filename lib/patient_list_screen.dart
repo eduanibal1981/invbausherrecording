@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'filter_screen.dart';
 import 'patient_dashboard_screen_v2.dart';
+import 'administration_screen.dart';
 
 class PatientListScreen extends StatefulWidget {
   const PatientListScreen({super.key});
@@ -41,7 +42,15 @@ class _PatientListScreenState extends State<PatientListScreen> {
           .select()
           .eq('userid', userId)
           .maybeSingle();
-      if (mounted) setState(() => _currentStaff = data);
+      if (mounted) {
+        setState(() {
+          _currentStaff = data;
+          // Default 'My Patients' to true if the role is Nurse
+          if (data != null && data['staffrole'] == 'Nurse') {
+            _showMyPatientsOnly = true;
+          }
+        });
+      }
     } catch (_) {
       // Handle error cleanly
     }
@@ -180,34 +189,103 @@ class _PatientListScreenState extends State<PatientListScreen> {
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
         actions: [
-          if (_currentStaff != null)
-            Row(
-              children: [
-                const Text('My Patients', style: TextStyle(fontSize: 12)),
-                Switch(
-                  value: _showMyPatientsOnly,
-                  activeColor: Colors.amber,
-                  onChanged: (val) => setState(() => _showMyPatientsOnly = val),
-                ),
-              ],
-            ),
           IconButton(
             icon: Icon(
               Icons.filter_list,
               color: _filters.isNotEmpty ? Colors.amber : Colors.white,
             ),
             onPressed: _openFilter,
+            tooltip: 'Filter',
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refreshPatients,
-            tooltip: 'Refresh',
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-            tooltip: 'Logout',
-          ),
+          if (_currentStaff != null)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white),
+              onSelected: (value) {
+                if (value == 'refresh') _refreshPatients();
+                if (value == 'logout') _logout();
+                if (value == 'admin') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AdministrationScreen(),
+                    ),
+                  );
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  enabled: false,
+                  child: StatefulBuilder(
+                    builder: (context, menuSetState) {
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.person, color: Colors.teal, size: 20),
+                              SizedBox(width: 8),
+                              Text(
+                                "My Patients",
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Switch(
+                            value: _showMyPatientsOnly,
+                            activeColor: Colors.amber,
+                            onChanged: (val) {
+                              setState(() => _showMyPatientsOnly = val);
+                              menuSetState(() {});
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                const PopupMenuDivider(),
+                if (_currentStaff!['medicalstaffid'] == 59726) ...[
+                  const PopupMenuItem<String>(
+                    value: 'admin',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.admin_panel_settings,
+                          color: Colors.blueGrey,
+                          size: 20,
+                        ),
+                        SizedBox(width: 12),
+                        Text("Administration"),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                ],
+                const PopupMenuItem<String>(
+                  value: 'refresh',
+                  child: Row(
+                    children: [
+                      Icon(Icons.refresh, color: Colors.teal, size: 20),
+                      SizedBox(width: 12),
+                      Text("Refresh"),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'logout',
+                  child: Row(
+                    children: [
+                      Icon(Icons.logout, color: Colors.redAccent, size: 20),
+                      SizedBox(width: 12),
+                      Text("Logout"),
+                    ],
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
       body: Column(
@@ -324,6 +402,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                                   patient: patient,
                                                   staffRole:
                                                       _currentStaff?['staffrole'],
+                                                  medicalStaffId:
+                                                      _currentStaff?['medicalstaffid'],
                                                   patientList: patients,
                                                   currentIndex: index,
                                                 ),

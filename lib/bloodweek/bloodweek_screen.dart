@@ -5,6 +5,7 @@ import 'bloodweek_controller.dart';
 class BloodWeekScreen extends StatefulWidget {
   final Map<String, dynamic> patient;
   final String? staffRole;
+  final int? medicalStaffId;
 
   /// Optional: list of patients for navigation (from filtered list)
   final List<Map<String, dynamic>>? patientList;
@@ -16,6 +17,7 @@ class BloodWeekScreen extends StatefulWidget {
     super.key,
     required this.patient,
     this.staffRole,
+    this.medicalStaffId,
     this.patientList,
     this.currentIndex,
   });
@@ -76,7 +78,10 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
     super.initState();
     _currentPatient = widget.patient;
     _currentIndex = widget.currentIndex ?? 0;
-    controller = BloodWeekController(_fields);
+    controller = BloodWeekController(
+      _fields,
+      medicalStaffId: widget.medicalStaffId,
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       controller.fetchData(_currentPatient['pcid']);
@@ -187,7 +192,10 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                 title: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_currentPatient['name'] ?? 'Unknown'),
+                    Text(
+                      _currentPatient['name'] ?? 'Unknown',
+                      style: const TextStyle(fontSize: 16),
+                    ),
                     Row(
                       children: [
                         Text(

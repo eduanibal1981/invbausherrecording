@@ -6,6 +6,7 @@ class BloodWeekController extends ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
 
   final List<String> fields;
+  final int? medicalStaffId;
   final Map<String, TextEditingController> controllers = {};
   static final Map<String, BloodWeekModel> _cache = {};
 
@@ -43,7 +44,7 @@ class BloodWeekController extends ChangeNotifier {
     notifyListeners();
   }
 
-  BloodWeekController(this.fields) {
+  BloodWeekController(this.fields, {this.medicalStaffId}) {
     for (final f in fields) {
       final c = TextEditingController();
       c.addListener(_onFieldChanged);
@@ -97,6 +98,16 @@ class BloodWeekController extends ChangeNotifier {
   Future<String?> saveData(int pcid) async {
     isLoading = true;
     notifyListeners();
+
+    final cbchbValue = controllers['cbchb']?.text ?? '';
+    final staffEnterValue = controllers['staffenter']?.text ?? '';
+
+    // Auto-set staffenter if cbchb is entered and staffenter is empty/null
+    if (cbchbValue.isNotEmpty &&
+        staffEnterValue.isEmpty &&
+        medicalStaffId != null) {
+      controllers['staffenter']?.text = medicalStaffId.toString();
+    }
 
     final data = {
       'pcid': pcid,

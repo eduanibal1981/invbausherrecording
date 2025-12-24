@@ -6,6 +6,7 @@ import 'iron_profile_screen.dart';
 class PatientDashboardScreenV2 extends StatefulWidget {
   final Map<String, dynamic> patient;
   final String? staffRole;
+  final int? medicalStaffId;
   final List<Map<String, dynamic>>? patientList;
   final int? currentIndex;
 
@@ -13,6 +14,7 @@ class PatientDashboardScreenV2 extends StatefulWidget {
     super.key,
     required this.patient,
     this.staffRole,
+    this.medicalStaffId,
     this.patientList,
     this.currentIndex,
   });
@@ -64,6 +66,7 @@ class _PatientDashboardScreenV2State extends State<PatientDashboardScreenV2> {
                   builder: (_) => BloodWeekScreen(
                     patient: _currentPatient,
                     staffRole: widget.staffRole,
+                    medicalStaffId: widget.medicalStaffId,
                     patientList: widget.patientList,
                     currentIndex: _currentIndex,
                   ),
@@ -83,7 +86,7 @@ class _PatientDashboardScreenV2State extends State<PatientDashboardScreenV2> {
             context,
             title: 'Parathyroid Investigations',
             icon: Icons.shield_moon_sharp,
-            color: Colors.purple.shade100,
+            color: Colors.purple.shade200,
             iconColor: Colors.purple.shade900,
             onTap: () {
               Navigator.push(
