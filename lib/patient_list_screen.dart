@@ -64,7 +64,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
           .eq('status', 'Active');
       return List<Map<String, dynamic>>.from(response as List);
     } catch (e) {
-      throw Exception('Failed to load patients: $e');
+      throw Exception('Failed to load patients : $e');
     }
   }
 

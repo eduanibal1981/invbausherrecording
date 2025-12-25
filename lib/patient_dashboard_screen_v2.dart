@@ -42,7 +42,7 @@ class _PatientDashboardScreenV2State extends State<PatientDashboardScreenV2> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_currentPatient['name'] ?? 'Unknown'),
+            Text(_currentPatient['name'] ?? 'Unknown '),
             Text(
               'ID: ${_currentPatient['pcid']}',
               style: const TextStyle(fontSize: 12),

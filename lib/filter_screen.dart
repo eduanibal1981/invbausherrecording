@@ -50,7 +50,7 @@ class _FilterScreenState extends State<FilterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Filter Patients')),
+      appBar: AppBar(title: const Text('Filter the Patients')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -85,7 +85,7 @@ class _FilterScreenState extends State<FilterScreen> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: _hallName,
+                    initialValue: _hallName,
                     decoration: InputDecoration(
                       labelText: 'Hall Name',
                       filled: true,
@@ -120,7 +120,7 @@ class _FilterScreenState extends State<FilterScreen> {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _day,
+                          initialValue: _day,
                           decoration: InputDecoration(
                             labelText: 'Day',
                             filled: true,
@@ -156,7 +156,7 @@ class _FilterScreenState extends State<FilterScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _shift,
+                          initialValue: _shift,
                           decoration: InputDecoration(
                             labelText: 'Shift',
                             filled: true,

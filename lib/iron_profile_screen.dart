@@ -194,7 +194,7 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
               style: const TextStyle(fontSize: 12),
             ),
             const Text(
-              '           Iron Profile Investigations',
+              '         ==Iron Profile Investigations==',
               style: TextStyle(fontSize: 14),
             ),
           ],
@@ -209,7 +209,7 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
           Padding(
             padding: const EdgeInsets.all(16),
             child: DropdownButtonFormField<int>(
-              value: _selectedYear,
+              initialValue: _selectedYear,
               decoration: const InputDecoration(
                 labelText: 'Filter by Year',
                 border: OutlineInputBorder(),

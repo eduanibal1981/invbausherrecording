@@ -247,7 +247,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                         ),
                         backgroundColor: c.hasUnsavedChanges
                             ? Colors.red
-                            : Colors.teal.shade700,
+                            : const Color.fromARGB(255, 6, 107, 95),
                         foregroundColor: Colors.white,
                       ),
                       onPressed: c.isLoading

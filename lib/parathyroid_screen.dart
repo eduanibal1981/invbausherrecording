@@ -261,7 +261,7 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
                                       height: 30,
                                       child: Switch(
                                         value: rec['isdrrevpth'] ?? false,
-                                        activeColor: Colors.green,
+                                        activeThumbColor: const Color.fromARGB(255, 74, 182, 78),
                                         onChanged: (val) =>
                                             _updateStatus(rec, val, index),
                                       ),

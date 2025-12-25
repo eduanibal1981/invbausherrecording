@@ -23,7 +23,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Investigation Recording',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color.fromARGB(255, 1, 158, 142)),
         useMaterial3: true,
       ),
       home: StreamBuilder<AuthState>(
