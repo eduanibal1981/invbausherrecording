@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'nurse_patient_summary_screen.dart';
+import 'nurse_assignment_screen.dart';
 
 class AdministrationScreen extends StatefulWidget {
   const AdministrationScreen({super.key});
@@ -27,7 +29,6 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
           'Failed to fetch from Google Sheets: ${response.statusCode}',
         );
       }
-
       final List<dynamic> uniqueList = json.decode(response.body);
       final client = Supabase.instance.client;
 
@@ -76,6 +77,10 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
             .not('pcid', 'in', '(${sheetIds.join(",")})');
       }
 
+      // 7. Update Patient Schedule
+      await client.rpc('update_patient_schedule');
+      // 8. Update Patient staffid
+      await client.rpc('sync_all_patients_staffid');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -191,17 +196,34 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
             color: Colors.teal.shade50,
             iconColor: Colors.teal.shade900,
             children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(
-                  child: Text(
-                    'Feature coming soon...',
-                    style: TextStyle(
-                      fontStyle: FontStyle.italic,
-                      color: Colors.grey,
+              _buildActionTile(
+                title: 'Nurse Patient Summary',
+                subtitle: 'View monthly blood work statistics per nurse',
+                isLoading: false,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const NursePatientSummaryScreen(),
                     ),
-                  ),
-                ),
+                  );
+                },
+                icon: Icons.analytics_outlined,
+              ),
+              const Divider(),
+              _buildActionTile(
+                title: 'Assign Nurses',
+                subtitle: 'Assign nurses to patient groups (Hall/Day/Shift)',
+                isLoading: false,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const NurseAssignmentScreen(),
+                    ),
+                  );
+                },
+                icon: Icons.assignment_ind_outlined,
               ),
             ],
           ),
