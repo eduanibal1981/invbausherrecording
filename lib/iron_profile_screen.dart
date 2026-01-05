@@ -40,9 +40,11 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
         }
       });
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
+      }
     } finally {
       setState(() => _isLoading = false);
     }

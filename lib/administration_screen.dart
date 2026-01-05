@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'nurse_patient_summary_screen.dart';
 import 'nurse_assignment_screen.dart';
+import 'services/notification_service.dart';
 
 class AdministrationScreen extends StatefulWidget {
   const AdministrationScreen({super.key});
@@ -15,6 +16,13 @@ class AdministrationScreen extends StatefulWidget {
 class _AdministrationScreenState extends State<AdministrationScreen> {
   bool _isSyncingPatients = false;
   bool _isSyncingSchedules = false;
+  bool _isSendingNotification = false;
+
+  final TextEditingController _notificationTitleController =
+      TextEditingController();
+  final TextEditingController _notificationBodyController =
+      TextEditingController();
+  final _notificationFormKey = GlobalKey<FormState>();
 
   final String _googleSheetsUrl =
       'https://script.google.com/macros/s/AKfycbxnqQxdSxcAJbzLt07jWPrhKNAEwELl8qoMC07c7xfCMHqLbruxj7NHlaiVN09bACbWLg/exec?type=patients';
@@ -155,6 +163,89 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
     }
   }
 
+  Future<void> _sendNotificationToNurses() async {
+    if (!_notificationFormKey.currentState!.validate()) return;
+
+    setState(() => _isSendingNotification = true);
+
+    try {
+      // Fetch all nurses with FCM tokens
+      final nurses = await Supabase.instance.client
+          .from('staff')
+          .select('medicalstaffid, name, fcm_token')
+          .eq('staffrole', 'Nurse')
+          .not('fcm_token', 'is', null);
+
+      if (nurses.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No nurses with registered devices found'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      int successCount = 0;
+      int failCount = 0;
+
+      // Send notification to each nurse
+      for (final nurse in nurses) {
+        final token = nurse['fcm_token'];
+        if (token != null && token.toString().isNotEmpty) {
+          final result = await NotificationService().sendPushNotification(
+            token: token,
+            title: _notificationTitleController.text.trim(),
+            body: _notificationBodyController.text.trim(),
+          );
+
+          if (result['success'] == true) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Notifications sent: $successCount success, $failCount failed',
+            ),
+            backgroundColor: failCount == 0 ? Colors.green : Colors.orange,
+          ),
+        );
+
+        // Clear the form on success
+        if (successCount > 0) {
+          _notificationTitleController.clear();
+          _notificationBodyController.clear();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sending notifications: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSendingNotification = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _notificationTitleController.dispose();
+    _notificationBodyController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -234,15 +325,80 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
             color: Colors.orange.shade50,
             iconColor: Colors.orange.shade900,
             children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(
-                  child: Text(
-                    'System notifications management (Planned)',
-                    style: TextStyle(
-                      fontStyle: FontStyle.italic,
-                      color: Colors.grey,
-                    ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Form(
+                  key: _notificationFormKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Send notification to all Nurses',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _notificationTitleController,
+                        decoration: const InputDecoration(
+                          labelText: 'Notification Title',
+                          hintText: 'e.g., Blood Work Reminder',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.title),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter a title';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _notificationBodyController,
+                        decoration: const InputDecoration(
+                          labelText: 'Notification Body',
+                          hintText: 'e.g., Please complete pending blood work',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.message),
+                        ),
+                        maxLines: 3,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter a message';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _isSendingNotification
+                            ? null
+                            : _sendNotificationToNurses,
+                        icon: _isSendingNotification
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.send),
+                        label: Text(
+                          _isSendingNotification
+                              ? 'Sending...'
+                              : 'Send to All Nurses',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

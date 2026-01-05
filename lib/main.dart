@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'services/notification_service.dart';
 import 'patient_list_screen.dart';
 import 'login_screen.dart';
 
@@ -11,6 +14,10 @@ Future<void> main() async {
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5c2hzb3JrbG5wdWRja3VjcHZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA4Njk0MDksImV4cCI6MjA1NjQ0NTQwOX0.tb3BucsaN3u8DGfDOYjb4mNygyHGhb21_CWX_SLAM9w',
   );
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  await NotificationService().initialize();
 
   runApp(const MyApp());
 }

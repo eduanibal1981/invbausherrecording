@@ -37,9 +37,11 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
         _records = List<Map<String, dynamic>>.from(response);
       });
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading data: $e')));
+      }
     } finally {
       setState(() => _isLoading = false);
     }
@@ -261,7 +263,12 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
                                       height: 30,
                                       child: Switch(
                                         value: rec['isdrrevpth'] ?? false,
-                                        activeColor: const Color.fromARGB(255, 74, 182, 78),
+                                        activeColor: const Color.fromARGB(
+                                          255,
+                                          74,
+                                          182,
+                                          78,
+                                        ),
                                         onChanged: (val) =>
                                             _updateStatus(rec, val, index),
                                       ),

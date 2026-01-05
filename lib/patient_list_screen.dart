@@ -4,6 +4,9 @@ import 'package:intl/intl.dart';
 import 'filter_screen.dart';
 import 'patient_dashboard_screen_v2.dart';
 import 'administration_screen.dart';
+import 'about_screen.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'services/notification_service.dart';
 
 class PatientListScreen extends StatefulWidget {
   const PatientListScreen({super.key});
@@ -30,6 +33,18 @@ class _PatientListScreenState extends State<PatientListScreen> {
     super.initState();
     _fetchStaffDetails();
     _patientsFuture = _fetchPatients();
+    _uploadFcmToken();
+  }
+
+  Future<void> _uploadFcmToken() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await NotificationService().saveTokenToSupabase(token);
+      }
+    } catch (e) {
+      debugPrint('Error uploading FCM token: $e');
+    }
   }
 
   Future<void> _fetchStaffDetails() async {
@@ -202,6 +217,14 @@ class _PatientListScreenState extends State<PatientListScreen> {
               icon: const Icon(Icons.more_vert, color: Colors.white),
               onSelected: (value) {
                 if (value == 'refresh') _refreshPatients();
+                if (value == 'about') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AboutScreen(),
+                    ),
+                  );
+                }
                 if (value == 'logout') _logout();
                 if (value == 'admin') {
                   Navigator.push(
@@ -271,6 +294,20 @@ class _PatientListScreenState extends State<PatientListScreen> {
                       Icon(Icons.refresh, color: Colors.teal, size: 20),
                       SizedBox(width: 12),
                       Text("Refresh"),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'about',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: Colors.blueGrey,
+                        size: 20,
+                      ),
+                      SizedBox(width: 12),
+                      Text("About"),
                     ],
                   ),
                 ),
