@@ -14,8 +14,8 @@ class AdministrationScreen extends StatefulWidget {
 }
 
 class _AdministrationScreenState extends State<AdministrationScreen> {
-  bool _isSyncingPatients = false;
-  bool _isSyncingSchedules = false;
+  bool _isSyncing = false;
+  String _currentSyncStep = '';
   bool _isSendingNotification = false;
 
   final TextEditingController _notificationTitleController =
@@ -27,10 +27,23 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
   final String _googleSheetsUrl =
       'https://script.google.com/macros/s/AKfycbxnqQxdSxcAJbzLt07jWPrhKNAEwELl8qoMC07c7xfCMHqLbruxj7NHlaiVN09bACbWLg/exec?type=patients';
 
-  Future<void> _syncPatients() async {
-    setState(() => _isSyncingPatients = true);
+  /// Unified sync method - runs all data integration steps
+  Future<void> _runFullSync() async {
+    setState(() {
+      _isSyncing = true;
+      _currentSyncStep = 'Starting...';
+    });
+
+    int newPatientsCount = 0;
+    int schedulesInserted = 0;
+
     try {
-      // 1. Fetch from Google Sheets
+      final client = Supabase.instance.client;
+
+      // Step 1: Fetch from Google Sheets
+      setState(
+        () => _currentSyncStep = '📥 Fetching patients from Google Sheets...',
+      );
       final response = await http.get(Uri.parse(_googleSheetsUrl));
       if (response.statusCode != 200) {
         throw Exception(
@@ -38,15 +51,15 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
         );
       }
       final List<dynamic> uniqueList = json.decode(response.body);
-      final client = Supabase.instance.client;
 
-      // 2. Load all existing patients pcid
+      // Step 2: Load existing patients
+      setState(() => _currentSyncStep = '📋 Checking existing records...');
       final List<dynamic> existingPatients = await client
           .from('patients')
           .select('pcid');
       final existingIds = existingPatients.map((p) => p['pcid']).toSet();
 
-      // 3. Build sheet IDs + insertion list
+      // Build sheet IDs + insertion list
       final sheetIds = <int>[];
       final List<Map<String, dynamic>> toInsert = [];
 
@@ -54,113 +67,147 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
         final cidRaw = item['0'] ?? item['cid'];
         final name = item['1'] ?? item['name'];
         final cid = int.tryParse(cidRaw.toString());
-
         if (cid == null) continue;
-
         sheetIds.add(cid);
-
         if (!existingIds.contains(cid)) {
           toInsert.add({'pcid': cid, 'name': name, 'status': 'Active'});
         }
       }
 
-      // 4. Insert new patients
+      newPatientsCount = toInsert.length;
+
+      // Step 3: Insert new patients
       if (toInsert.isNotEmpty) {
+        setState(
+          () =>
+              _currentSyncStep = '➕ Adding ${toInsert.length} new patients...',
+        );
         await client.from('patients').insert(toInsert);
       }
 
-      // 5. Set sheet patients = Active
+      // Step 4: Update patient statuses
+      setState(() => _currentSyncStep = '🔄 Updating patient statuses...');
       if (sheetIds.isNotEmpty) {
         await client
             .from('patients')
             .update({'status': 'Active'})
             .inFilter('pcid', sheetIds);
-      }
-
-      // 6. Set non-sheet = Other
-      if (sheetIds.isNotEmpty) {
         await client
             .from('patients')
             .update({'status': 'Other'})
             .not('pcid', 'in', '(${sheetIds.join(",")})');
       }
 
-      // 7. Update Patient Schedule
+      // Step 5: Update Patient Schedule RPC
+      setState(() => _currentSyncStep = '📅 Updating patient schedules...');
       await client.rpc('update_patient_schedule');
-      // 8. Update Patient staffid
+
+      // Step 6: Update Staff assignments
+      setState(() => _currentSyncStep = '👥 Syncing staff assignments...');
       await client.rpc('sync_all_patients_staffid');
+
+      // Step 7: Sync schedules via Edge Function
+      setState(() => _currentSyncStep = '⏰ Syncing schedule data...');
+      final session = client.auth.currentSession;
+      if (session != null) {
+        final res = await client.functions.invoke(
+          'sync_schedule',
+          headers: {'Authorization': 'Bearer ${session.accessToken}'},
+        );
+        schedulesInserted = res.data?['inserted'] ?? 0;
+      }
+
+      // Complete!
+      setState(() => _currentSyncStep = '✅ Sync Complete!');
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Sync Complete: Patients updated successfully'),
-          ),
+        await Future.delayed(const Duration(milliseconds: 500));
+        _showSyncResultDialog(
+          success: true,
+          newPatients: newPatientsCount,
+          totalPatients: sheetIds.length,
+          schedulesInserted: schedulesInserted,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error syncing patients: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        setState(() => _currentSyncStep = '❌ Error occurred');
+        _showSyncResultDialog(success: false, error: e.toString());
       }
     } finally {
-      if (mounted) setState(() => _isSyncingPatients = false);
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+          _currentSyncStep = '';
+        });
+      }
     }
   }
 
-  Future<void> _syncSchedule() async {
-    setState(() => _isSyncingSchedules = true);
-
-    try {
-      final client = Supabase.instance.client;
-      final session = client.auth.currentSession;
-
-      if (session == null) {
-        throw Exception('User is not logged in');
-      }
-
-      final res = await client.functions.invoke(
-        'sync_schedule',
-        headers: {
-          'Authorization':
-              'Bearer ${Supabase.instance.client.auth.currentSession!.accessToken}',
-        },
-      );
-
-      final data = res.data;
-
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Sync Complete'),
-          content: Text(
-            'Schedules synced successfully.\n'
-            'Total records inserted: ${data['inserted'] ?? 0}',
+  void _showSyncResultDialog({
+    required bool success,
+    int newPatients = 0,
+    int totalPatients = 0,
+    int schedulesInserted = 0,
+    String? error,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          success ? Icons.check_circle : Icons.error,
+          color: success ? Colors.green : Colors.red,
+          size: 48,
+        ),
+        title: Text(success ? 'Sync Complete!' : 'Sync Failed'),
+        content: success
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildResultRow(
+                    Icons.people,
+                    'Total patients processed',
+                    '$totalPatients',
+                  ),
+                  _buildResultRow(
+                    Icons.person_add,
+                    'New patients added',
+                    '$newPatients',
+                  ),
+                  _buildResultRow(
+                    Icons.schedule,
+                    'Schedules synced',
+                    '$schedulesInserted',
+                  ),
+                ],
+              )
+            : Text(
+                'An error occurred during sync:\n\n$error',
+                style: const TextStyle(color: Colors.red),
+              ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
+        ],
+      ),
+    );
+  }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error syncing schedules: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _isSyncingSchedules = false);
-    }
+  Widget _buildResultRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.blue.shade700),
+          const SizedBox(width: 8),
+          Text('$label: '),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
   }
 
   Future<void> _sendNotificationToNurses() async {
@@ -263,20 +310,98 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
             color: Colors.blue.shade50,
             iconColor: Colors.blue.shade900,
             children: [
-              _buildActionTile(
-                title: 'Fetch Patients from Google Sheets',
-                subtitle: 'Updates patient records from master spreadsheet',
-                isLoading: _isSyncingPatients,
-                onTap: _syncPatients,
-                icon: Icons.cloud_download_outlined,
-              ),
-              const Divider(),
-              _buildActionTile(
-                title: 'Sync Schedules',
-                subtitle: 'Triggers Supabase schedule synchronization',
-                isLoading: _isSyncingSchedules,
-                onTap: _syncSchedule,
-                icon: Icons.schedule_send_outlined,
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Description
+                    const Text(
+                      'Synchronize all patient data and schedules from external sources.',
+                      style: TextStyle(fontSize: 13, color: Colors.black54),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Progress indicator (visible during sync)
+                    if (_isSyncing) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _currentSyncStep,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.blue.shade800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Sync button
+                    ElevatedButton.icon(
+                      onPressed: _isSyncing ? null : _runFullSync,
+                      icon: _isSyncing
+                          ? const SizedBox.shrink()
+                          : const Icon(Icons.sync, size: 22),
+                      label: Text(
+                        _isSyncing ? 'Syncing...' : 'Sync All Data',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        elevation: 2,
+                      ),
+                    ),
+
+                    // Info text
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Fetches patients, updates statuses & syncs schedules',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

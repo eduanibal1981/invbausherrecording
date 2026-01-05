@@ -270,7 +270,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
                   ),
                 ),
                 const PopupMenuDivider(),
-                if (_currentStaff!['medicalstaffid'] == 59726) ...[
+                if (_currentStaff!['medicalstaffid'] == 59726 ||
+                    _currentStaff!['medicalstaffid'] == 66931 ||
+                    _currentStaff!['medicalstaffid'] == 57492) ...[
                   const PopupMenuItem<String>(
                     value: 'admin',
                     child: Row(
