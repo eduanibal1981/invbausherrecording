@@ -5,8 +5,6 @@ import 'filter_screen.dart';
 import 'patient_dashboard_screen_v2.dart';
 import 'administration_screen.dart';
 import 'about_screen.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'services/notification_service.dart';
 
 class PatientListScreen extends StatefulWidget {
   const PatientListScreen({super.key});
@@ -25,6 +23,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
   Map<String, dynamic>? _currentStaff;
   bool _showMyPatientsOnly = false;
 
+  // Logout loading state
+  bool _isLoggingOut = false;
+
   // Future for patients data
   late Future<List<Map<String, dynamic>>> _patientsFuture;
 
@@ -33,18 +34,6 @@ class _PatientListScreenState extends State<PatientListScreen> {
     super.initState();
     _fetchStaffDetails();
     _patientsFuture = _fetchPatients();
-    _uploadFcmToken();
-  }
-
-  Future<void> _uploadFcmToken() async {
-    try {
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null) {
-        await NotificationService().saveTokenToSupabase(token);
-      }
-    } catch (e) {
-      debugPrint('Error uploading FCM token: $e');
-    }
   }
 
   Future<void> _fetchStaffDetails() async {
@@ -66,8 +55,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
           }
         });
       }
-    } catch (_) {
-      // Handle error cleanly
+    } catch (e) {
+      // Log the error for debugging
+      debugPrint('Error fetching staff details: $e');
     }
   }
 
@@ -90,7 +80,21 @@ class _PatientListScreenState extends State<PatientListScreen> {
   }
 
   Future<void> _logout() async {
-    await Supabase.instance.client.auth.signOut();
+    setState(() => _isLoggingOut = true);
+    try {
+      await Supabase.instance.client.auth.signOut();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Logout failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoggingOut = false);
+    }
   }
 
   Future<void> _openFilter() async {
@@ -154,43 +158,46 @@ class _PatientListScreenState extends State<PatientListScreen> {
   List<Map<String, dynamic>> _applyClientSideFilters(
     List<Map<String, dynamic>> allPatients,
   ) {
-    var patients = allPatients;
+    // Get filter parameters once
+    final staffId = _currentStaff?['medicalstaffid'];
+    final searchQuery = _filters['search']?.toString().toLowerCase() ?? '';
+    final showLabNotRecorded = _filters['showLabNotRecorded'] == true;
+    final currentMonth = DateFormat('MMMM').format(DateTime.now());
 
-    // 1. Apply Schedule Filters
-    if (_filteredPcids != null) {
-      patients = patients
-          .where((p) => _filteredPcids!.contains(p['pcid']))
-          .toList();
-    }
+    // Single iteration with combined conditions
+    return allPatients.where((patient) {
+      // 1. Schedule Filters
+      if (_filteredPcids != null &&
+          !_filteredPcids!.contains(patient['pcid'])) {
+        return false;
+      }
 
-    // 2. Apply My Patients Filter
-    if (_showMyPatientsOnly && _currentStaff != null) {
-      final staffId = _currentStaff!['medicalstaffid'];
-      patients = patients
-          .where((p) => p['dstaffid'] == staffId || p['nstaffid'] == staffId)
-          .toList();
-    }
+      // 2. My Patients Filter
+      if (_showMyPatientsOnly && _currentStaff != null) {
+        if (patient['dstaffid'] != staffId && patient['nstaffid'] != staffId) {
+          return false;
+        }
+      }
 
-    // 3. Apply Search Filter
-    if (_filters['search'] != null && _filters['search'].isNotEmpty) {
-      final query = _filters['search'].toString().toLowerCase();
-      patients = patients.where((p) {
-        final name = (p['name'] ?? '').toString().toLowerCase();
-        final id = p['pcid'].toString();
-        return name.contains(query) || id.contains(query);
-      }).toList();
-    }
+      // 3. Search Filter
+      if (searchQuery.isNotEmpty) {
+        final name = (patient['name'] ?? '').toString().toLowerCase();
+        final id = patient['pcid'].toString();
+        if (!name.contains(searchQuery) && !id.contains(searchQuery)) {
+          return false;
+        }
+      }
 
-    // 4. Apply Lab Not Recorded Filter
-    if (_filters['showLabNotRecorded'] == true) {
-      final currentMonth = DateFormat('MMMM').format(DateTime.now());
-      patients = patients.where((p) {
-        final lastBw = p['lastbwcollected']?.toString() ?? '';
-        return lastBw != currentMonth;
-      }).toList();
-    }
+      // 4. Lab Not Recorded Filter
+      if (showLabNotRecorded) {
+        final lastBw = patient['lastbwcollected']?.toString() ?? '';
+        if (lastBw == currentMonth) {
+          return false;
+        }
+      }
 
-    return patients;
+      return true;
+    }).toList();
   }
 
   @override
@@ -324,6 +331,18 @@ class _PatientListScreenState extends State<PatientListScreen> {
                   ),
                 ),
               ],
+            ),
+          if (_isLoggingOut)
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              ),
             ),
         ],
       ),

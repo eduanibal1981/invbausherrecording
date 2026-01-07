@@ -284,6 +284,48 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                 children: [
                   _buildSelectors(c),
                   if (c.isLoading) const LinearProgressIndicator(),
+                  if (c.isOfflineData || c.errorMessage != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      color: c.isOfflineData
+                          ? Colors.orange.shade100
+                          : Colors.red.shade100,
+                      child: Row(
+                        children: [
+                          Icon(
+                            c.isOfflineData
+                                ? Icons.cloud_off
+                                : Icons.error_outline,
+                            color: c.isOfflineData
+                                ? Colors.orange.shade800
+                                : Colors.red.shade800,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              c.errorMessage ?? 'Offline mode',
+                              style: TextStyle(
+                                color: c.isOfflineData
+                                    ? Colors.orange.shade900
+                                    : Colors.red.shade900,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          if (c.isOfflineData)
+                            TextButton(
+                              onPressed: () =>
+                                  c.fetchData(_currentPatient['pcid']),
+                              child: const Text('Retry'),
+                            ),
+                        ],
+                      ),
+                    ),
                   Expanded(child: _buildForm(c)),
                 ],
               ),
@@ -409,6 +451,39 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
   }
 
   Widget _buildTextField(String label, String key) {
+    // Define validation ranges for medical values
+    String? validator(String? value) {
+      if (value == null || value.isEmpty) return null;
+      if (key == 'staffenter') return null; // Skip validation for text field
+
+      final num = double.tryParse(value);
+      if (num == null) return 'Enter valid number';
+
+      // Medical value ranges
+      final ranges = {
+        'cbchb': (0.0, 20.0), // HB: 0-20 g/dL
+        'bca': (0.0, 20.0), // Calcium: 0-20 mg/dL
+        'bpo4': (0.0, 15.0), // Phosphorus: 0-15 mg/dL
+        'ue1k': (0.0, 10.0), // Potassium: 0-10 mEq/L
+        'ue1gfr': (0.0, 150.0), // GFR: 0-150 mL/min
+        'ureapre': (0.0, 300.0), // Urea Pre: 0-300 mg/dL
+        'ureapost': (0.0, 300.0), // Urea Post: 0-300 mg/dL
+        'effurr': (0.0, 100.0), // URR: 0-100%
+        'effktv': (0.0, 3.0), // Kt/V: 0-3
+        'ufdone': (0.0, 10.0), // UF Done: 0-10 L
+        'timetaken': (0.0, 600.0), // Time: 0-600 min
+        'wtpost': (0.0, 200.0), // Weight: 0-200 kg
+      };
+
+      if (ranges.containsKey(key)) {
+        final (min, max) = ranges[key]!;
+        if (num < min || num > max) {
+          return '$min-$max range';
+        }
+      }
+      return null;
+    }
+
     return TextFormField(
       controller: controller.controllers[key],
       decoration: InputDecoration(
@@ -419,6 +494,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
       keyboardType: key == 'staffenter'
           ? TextInputType.text
           : const TextInputType.numberWithOptions(decimal: true),
+      validator: validator,
     );
   }
 }

@@ -12,6 +12,12 @@ class _LoginScreenState extends State<LoginScreen> {
   final _staffIdController = TextEditingController();
   bool _isLoading = false;
 
+  @override
+  void dispose() {
+    _staffIdController.dispose();
+    super.dispose();
+  }
+
   Future<void> _signIn() async {
     final staffId = _staffIdController.text.trim();
     if (staffId.isEmpty) {

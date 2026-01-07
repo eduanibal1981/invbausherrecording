@@ -34,6 +34,8 @@ class BloodWeekController extends ChangeNotifier {
   bool hasUnsavedChanges = false;
   bool needCollect = false;
   bool isDrRevBw = false;
+  bool isOfflineData = false;
+  String? errorMessage;
 
   int? existingRecordId;
 
@@ -74,6 +76,9 @@ class BloodWeekController extends ChangeNotifier {
           .eq('month', selectedMonth)
           .maybeSingle();
 
+      isOfflineData = false;
+      errorMessage = null;
+
       if (response != null) {
         final model = BloodWeekModel.fromMap(response, fields);
 
@@ -82,10 +87,14 @@ class BloodWeekController extends ChangeNotifier {
       } else {
         _clearForm();
       }
-    } catch (_) {
+    } catch (e) {
       // 🔥 OFFLINE FALLBACK
       if (_cache.containsKey(key)) {
+        isOfflineData = true;
+        errorMessage = 'Showing cached data (offline)';
         _applyModel(_cache[key]!);
+      } else {
+        errorMessage = 'No data available offline';
       }
     }
 
@@ -154,6 +163,8 @@ class BloodWeekController extends ChangeNotifier {
     existingRecordId = null;
     isDrRevBw = false;
     needCollect = false;
+    isOfflineData = false;
+    errorMessage = null;
     for (final c in controllers.values) {
       c.clear();
     }

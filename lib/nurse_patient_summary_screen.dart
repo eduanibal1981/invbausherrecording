@@ -84,11 +84,9 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: DataTable(
-                  headingRowColor: MaterialStateProperty.all(
-                    Colors.teal.shade50,
-                  ),
-                  dataRowColor: MaterialStateProperty.resolveWith<Color?>((
-                    Set<MaterialState> states,
+                  headingRowColor: WidgetStateProperty.all(Colors.teal.shade50),
+                  dataRowColor: WidgetStateProperty.resolveWith<Color?>((
+                    Set<WidgetState> states,
                   ) {
                     return null; // Default
                   }),
@@ -146,7 +144,7 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                         : (index % 2 == 0 ? Colors.grey.shade50 : Colors.white);
 
                     return DataRow(
-                      color: MaterialStateProperty.all(rowColor),
+                      color: WidgetStateProperty.all(rowColor),
                       cells: [
                         DataCell(
                           Text(

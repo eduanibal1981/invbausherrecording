@@ -49,6 +49,7 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
 
   Future<void> _showEditDialog({Map<String, dynamic>? record}) async {
     final isEditing = record != null;
+    final formKey = GlobalKey<FormState>();
     final dateController = TextEditingController(
       text: record?['pthdate'] != null
           ? DateTime.parse(record!['pthdate']).toString().split(' ')[0]
@@ -64,7 +65,14 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
       text: record?['pthscan']?.toString() ?? '',
     );
 
-    // We store the original date to identify the record for updates if needed, though composite PK updates can be tricky.
+    String? validateNumeric(String? value, {double? min, double? max}) {
+      if (value == null || value.isEmpty) return null;
+      final num = double.tryParse(value);
+      if (num == null) return 'Enter a valid number';
+      if (min != null && num < min) return 'Value must be at least $min';
+      if (max != null && num > max) return 'Value must be at most $max';
+      return null;
+    }
     // For simplicity, we will assume Insert/Update semantics based on the primary key (date, pcid).
     // If the user changes the Date, it technically acts as a new record (INSERT) unless we handle deletion of old.
     // Given the request, simple Upsert on the NEW date is safest.
@@ -74,49 +82,57 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
       builder: (context) => AlertDialog(
         title: Text(isEditing ? 'Edit Parathyroid' : 'New Parathyroid'),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: dateController,
-                decoration: const InputDecoration(
-                  labelText: 'Date (YYYY-MM-DD)',
-                  icon: Icon(Icons.calendar_today),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: dateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Date (YYYY-MM-DD)',
+                    icon: Icon(Icons.calendar_today),
+                  ),
+                  readOnly: true,
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                      initialDate:
+                          DateTime.tryParse(dateController.text) ??
+                          DateTime.now(),
+                    );
+                    if (picked != null) {
+                      dateController.text = picked.toIso8601String().split(
+                        'T',
+                      )[0];
+                    }
+                  },
                 ),
-                readOnly: true,
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                    initialDate:
-                        DateTime.tryParse(dateController.text) ??
-                        DateTime.now(),
-                  );
-                  if (picked != null) {
-                    dateController.text = picked.toIso8601String().split(
-                      'T',
-                    )[0];
-                  }
-                },
-              ),
-              TextField(
-                controller: resultController,
-                decoration: const InputDecoration(labelText: 'PTH Result'),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+                TextFormField(
+                  controller: resultController,
+                  decoration: const InputDecoration(
+                    labelText: 'PTH Result (pg/mL, 0-2000)',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  validator: (v) => validateNumeric(v, min: 0, max: 2000),
                 ),
-              ),
-              TextField(
-                controller: noteController,
-                decoration: const InputDecoration(labelText: 'Treatment Note'),
-                maxLines: 2,
-              ),
-              TextField(
-                controller: scanController,
-                decoration: const InputDecoration(labelText: 'PTH Scan'),
-              ),
-            ],
+                TextFormField(
+                  controller: noteController,
+                  decoration: const InputDecoration(
+                    labelText: 'Treatment Note',
+                  ),
+                  maxLines: 2,
+                ),
+                TextFormField(
+                  controller: scanController,
+                  decoration: const InputDecoration(labelText: 'PTH Scan'),
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -126,13 +142,15 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context);
-              _saveRecord(
-                date: dateController.text,
-                result: resultController.text,
-                note: noteController.text,
-                scan: scanController.text,
-              );
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context);
+                _saveRecord(
+                  date: dateController.text,
+                  result: resultController.text,
+                  note: noteController.text,
+                  scan: scanController.text,
+                );
+              }
             },
             child: const Text('Save'),
           ),
@@ -281,6 +299,13 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
                                 icon: const Icon(Icons.edit),
                                 onPressed: () => _showEditDialog(record: rec),
                               ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () => _confirmDelete(rec),
+                              ),
                             ],
                           ),
                           onTap: () => _showEditDialog(record: rec),
@@ -319,6 +344,60 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
         setState(() {
           _records[index]['isdrrevpth'] = !value;
         });
+      }
+    }
+  }
+
+  Future<void> _confirmDelete(Map<String, dynamic> record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Record'),
+        content: const Text(
+          'Are you sure you want to delete this record? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() => _isLoading = true);
+      try {
+        await Supabase.instance.client
+            .from('parathyroid')
+            .delete()
+            .eq('pcid', record['pcid'])
+            .eq('pthdate', record['pthdate']);
+        _fetchRecords();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Record deleted'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error deleting: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        setState(() => _isLoading = false);
       }
     }
   }

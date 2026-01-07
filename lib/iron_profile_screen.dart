@@ -35,9 +35,6 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
 
       setState(() {
         _records = List<Map<String, dynamic>>.from(response);
-        if (_records.isNotEmpty) {
-          print('IronProfile Keys: ${_records.first.keys.toList()}');
-        }
       });
     } catch (e) {
       if (mounted) {
@@ -52,6 +49,7 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
 
   Future<void> _showEditDialog({Map<String, dynamic>? record}) async {
     final isEditing = record != null;
+    final formKey = GlobalKey<FormState>();
     final dateController = TextEditingController(
       text: record?['invdate'] ?? DateTime.now().toString().split(' ')[0],
     );
@@ -68,62 +66,80 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
       text: record?['ironnote']?.toString() ?? '',
     );
 
+    String? validateNumeric(String? value, {double? min, double? max}) {
+      if (value == null || value.isEmpty) return null;
+      final num = double.tryParse(value);
+      if (num == null) return 'Enter a valid number';
+      if (min != null && num < min) return 'Value must be at least $min';
+      if (max != null && num > max) return 'Value must be at most $max';
+      return null;
+    }
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(isEditing ? 'Edit Iron Profile' : 'New Iron Profile'),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: dateController,
-                decoration: const InputDecoration(
-                  labelText: 'Date (YYYY-MM-DD)',
-                  icon: Icon(Icons.calendar_today),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: dateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Date (YYYY-MM-DD)',
+                    icon: Icon(Icons.calendar_today),
+                  ),
+                  readOnly: true,
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                      initialDate:
+                          DateTime.tryParse(dateController.text) ??
+                          DateTime.now(),
+                    );
+                    if (picked != null) {
+                      dateController.text = picked.toIso8601String().split(
+                        'T',
+                      )[0];
+                    }
+                  },
                 ),
-                readOnly: true,
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                    initialDate:
-                        DateTime.tryParse(dateController.text) ??
-                        DateTime.now(),
-                  );
-                  if (picked != null) {
-                    dateController.text = picked.toIso8601String().split(
-                      'T',
-                    )[0];
-                  }
-                },
-              ),
-              TextField(
-                controller: tsatController,
-                decoration: const InputDecoration(labelText: 'Iron Tsat'),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+                TextFormField(
+                  controller: tsatController,
+                  decoration: const InputDecoration(
+                    labelText: 'Iron Tsat (0-100%)',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  validator: (v) => validateNumeric(v, min: 0, max: 100),
                 ),
-              ),
-              TextField(
-                controller: ferritinController,
-                decoration: const InputDecoration(labelText: 'Iron Ferritin'),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+                TextFormField(
+                  controller: ferritinController,
+                  decoration: const InputDecoration(
+                    labelText: 'Iron Ferritin (ng/mL)',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  validator: (v) => validateNumeric(v, min: 0, max: 5000),
                 ),
-              ),
-              TextField(
-                controller: medicalController,
-                decoration: const InputDecoration(labelText: 'Medical TTT'),
-                maxLines: 2,
-              ),
-              TextField(
-                controller: noteController,
-                decoration: const InputDecoration(labelText: 'Note'),
-                maxLines: 2,
-              ),
-            ],
+                TextFormField(
+                  controller: medicalController,
+                  decoration: const InputDecoration(labelText: 'Medical TTT'),
+                  maxLines: 2,
+                ),
+                TextFormField(
+                  controller: noteController,
+                  decoration: const InputDecoration(labelText: 'Note'),
+                  maxLines: 2,
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -133,14 +149,16 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context);
-              _saveRecord(
-                date: dateController.text,
-                tsat: tsatController.text,
-                ferritin: ferritinController.text,
-                medical: medicalController.text,
-                note: noteController.text,
-              );
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context);
+                _saveRecord(
+                  date: dateController.text,
+                  tsat: tsatController.text,
+                  ferritin: ferritinController.text,
+                  medical: medicalController.text,
+                  note: noteController.text,
+                );
+              }
             },
             child: const Text('Save'),
           ),
@@ -184,7 +202,6 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print('IronProfile StaffRole: ${widget.staffRole}');
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -284,6 +301,13 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
                                 icon: const Icon(Icons.edit),
                                 onPressed: () => _showEditDialog(record: rec),
                               ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () => _confirmDelete(rec),
+                              ),
                             ],
                           ),
                           onTap: () => _showEditDialog(record: rec),
@@ -322,6 +346,60 @@ class _IronProfileScreenState extends State<IronProfileScreen> {
         setState(() {
           _records[index]['isdrreviron'] = !value;
         });
+      }
+    }
+  }
+
+  Future<void> _confirmDelete(Map<String, dynamic> record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Record'),
+        content: const Text(
+          'Are you sure you want to delete this record? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() => _isLoading = true);
+      try {
+        await Supabase.instance.client
+            .from('ironprofile')
+            .delete()
+            .eq('pcid', record['pcid'])
+            .eq('invdate', record['invdate']);
+        _fetchRecords();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Record deleted'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error deleting: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        setState(() => _isLoading = false);
       }
     }
   }
