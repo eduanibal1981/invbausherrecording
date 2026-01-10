@@ -105,6 +105,12 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                     ),
                     DataColumn(
                       label: Text(
+                        'Assigned Groups',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DataColumn(
+                      label: Text(
                         'Total Patients',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
@@ -150,6 +156,13 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                           Text(
                             row['nurse_name']?.toString() ?? '-',
                             style: textStyle,
+                          ),
+                        ),
+                        DataCell(
+                          _buildAssignedGroupsCell(
+                            row['assigned_groups'],
+                            row['nurse_name'],
+                            isTotal,
                           ),
                         ),
                         DataCell(
@@ -215,6 +228,126 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
           fontWeight: isTotal ? null : FontWeight.bold,
         ),
       ),
+    );
+  }
+
+  Widget _buildAssignedGroupsCell(
+    dynamic assignedGroups,
+    dynamic nurseName,
+    bool isTotal,
+  ) {
+    if (isTotal ||
+        assignedGroups == null ||
+        assignedGroups.toString().isEmpty) {
+      return const Text('-', style: TextStyle(color: Colors.grey));
+    }
+
+    return InkWell(
+      onTap: () {
+        _showAssignedGroupsDialog(
+          nurseName?.toString() ?? 'Nurse',
+          assignedGroups.toString(),
+        );
+      },
+      child: const Text(
+        'Assigned',
+        style: TextStyle(
+          color: Colors.blue,
+          decoration: TextDecoration.underline,
+          decorationColor: Colors.blue,
+        ),
+      ),
+    );
+  }
+
+  void _showAssignedGroupsDialog(String nurseName, String groupsString) {
+    // Parse groups: "Hall-Day-Shift | Hall-Day-Shift" format
+    final groups = groupsString.split(' | ');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.assignment_ind, color: Colors.teal),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '$nurseName - Assignments',
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: groups.map((group) {
+              final parts = group.split('-');
+              final hall = parts.isNotEmpty ? parts[0] : '-';
+              final day = parts.length > 1 ? parts[1] : '-';
+              final shift = parts.length > 2 ? parts[2] : '-';
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.teal.shade200),
+                ),
+                child: Row(
+                  children: [
+                    _buildGroupChip('Hall', hall, Colors.blue),
+                    const SizedBox(width: 8),
+                    _buildGroupChip('Day', day, Colors.orange),
+                    const SizedBox(width: 8),
+                    _buildGroupChip('Shift', shift, Colors.purple),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupChip(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.grey.shade600,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

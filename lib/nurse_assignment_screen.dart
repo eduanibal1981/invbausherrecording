@@ -10,10 +10,13 @@ class NurseAssignmentScreen extends StatefulWidget {
 
 class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
   bool _isLoading = true;
+  bool _isSaving = false;
   List<Map<String, dynamic>> _groups = [];
   List<Map<String, dynamic>> _nurses = [];
   final Map<String, int?> _assignments =
       {}; // Key: "hall-shift-day", Value: staffid
+  final Map<String, int?> _originalAssignments =
+      {}; // Original values from database
   // Grouped data structure: Key = Hall Name, Value = List of group objects
   Map<String, List<Map<String, dynamic>>> _groupedGroups = {};
 
@@ -60,6 +63,7 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
           // Initialize assignments
           final key = _makeKey(group);
           _assignments[key] = group['staffid'];
+          _originalAssignments[key] = group['staffid'];
         }
         _isLoading = false;
       });
@@ -80,42 +84,81 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
     return '${group['ghall']}-${group['gshift']}-${group['gday']}';
   }
 
-  Future<void> _updateAssignment(
-    Map<String, dynamic> group,
-    int? staffId,
-  ) async {
-    // Optimistic update
+  bool get _hasUnsavedChanges {
+    for (var key in _assignments.keys) {
+      if (_assignments[key] != _originalAssignments[key]) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _updateLocalAssignment(Map<String, dynamic> group, int? staffId) {
     final key = _makeKey(group);
-    final previousId = _assignments[key];
     setState(() {
       _assignments[key] = staffId;
     });
+  }
+
+  Future<void> _saveAllAssignments() async {
+    // Find changed assignments
+    final changedKeys = _assignments.keys
+        .where((key) => _assignments[key] != _originalAssignments[key])
+        .toList();
+
+    if (changedKeys.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No changes to save'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
 
     try {
-      await Supabase.instance.client
-          .from('groupsofpatients')
-          .update({'staffid': staffId})
-          .match({
-            'ghall': group['ghall'],
-            'gshift': group['gshift'],
-            'gday': group['gday'],
-          });
+      final client = Supabase.instance.client;
 
-      // Success feedback (optional, maybe too noisy for every change)
-      // ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Assignment updated')));
-    } catch (e) {
-      // Revert on error
+      // Update each changed group
+      for (var key in changedKeys) {
+        final parts = key.split('-');
+        final hall = parts[0];
+        final shift = parts[1];
+        final day = parts[2];
+
+        await client
+            .from('groupsofpatients')
+            .update({'staffid': _assignments[key]})
+            .match({'ghall': hall, 'gshift': shift, 'gday': day});
+
+        // Update original to match current
+        _originalAssignments[key] = _assignments[key];
+      }
+
       if (mounted) {
-        setState(() {
-          _assignments[key] = previousId;
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update assignment: $e'),
+            content: Text(
+              'Saved ${changedKeys.length} assignment(s) successfully!',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        setState(() {}); // Refresh UI to update button state
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save assignments: $e'),
             backgroundColor: Colors.red,
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -130,6 +173,31 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
         title: const Text('Nurse Assignment'),
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: FilledButton.icon(
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.save, size: 20),
+              label: Text(_isSaving ? 'Saving...' : 'Save'),
+              style: FilledButton.styleFrom(
+                backgroundColor: _hasUnsavedChanges
+                    ? Colors.red
+                    : const Color.fromARGB(255, 6, 107, 95),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: _isSaving ? null : _saveAllAssignments,
+            ),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -142,7 +210,7 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
                 groupedGroups: _groupedGroups,
                 nurses: _nurses,
                 assignments: _assignments,
-                onAssignmentChanged: _updateAssignment,
+                onAssignmentChanged: _updateLocalAssignment,
               ),
             ),
     );

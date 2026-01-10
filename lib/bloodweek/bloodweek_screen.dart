@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'bloodweek_controller.dart';
+import '../medications_screen.dart';
 
 class BloodWeekScreen extends StatefulWidget {
   final Map<String, dynamic> patient;
@@ -380,6 +381,25 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
           children: [
             if (widget.staffRole == 'Dr')
               _buildSection('Doctor Review', [
+                ListTile(
+                  leading: const Icon(
+                    Icons.medication_outlined,
+                    color: Colors.orange,
+                  ),
+                  title: const Text('Medications'),
+                  subtitle: const Text('View/Edit patient medications'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            MedicationsScreen(patient: _currentPatient),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(),
                 SwitchListTile(
                   title: const Text('Reviewed by Dr'),
                   value: c.isDrRevBw,
