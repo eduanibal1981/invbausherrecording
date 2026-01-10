@@ -11,6 +11,8 @@ class NursePatientSummaryScreen extends StatefulWidget {
 
 class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
   late Future<List<Map<String, dynamic>>> _summaryFuture;
+  String? _selectedHall; // null means 'All'
+  List<String> _availableHalls = [];
 
   @override
   void initState() {
@@ -42,6 +44,23 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
         }
         return 0;
       });
+
+      // Extract unique halls from assigned_groups
+      final halls = <String>{};
+      for (var row in data) {
+        final groups = row['assigned_groups']?.toString() ?? '';
+        if (groups.isNotEmpty) {
+          // Format: "Hall-Day-Shift | Hall-Day-Shift"
+          final groupList = groups.split(' | ');
+          for (var group in groupList) {
+            final parts = group.split('-');
+            if (parts.isNotEmpty) {
+              halls.add(parts[0]);
+            }
+          }
+        }
+      }
+      _availableHalls = halls.toList()..sort();
 
       return data;
     } catch (e) {
@@ -75,121 +94,200 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
             return const Center(child: Text('No data found'));
           }
 
-          final data = snapshot.data!;
+          final allData = snapshot.data!;
 
-          return SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: DataTable(
-                  headingRowColor: WidgetStateProperty.all(Colors.teal.shade50),
-                  dataRowColor: WidgetStateProperty.resolveWith<Color?>((
-                    Set<WidgetState> states,
-                  ) {
-                    return null; // Default
-                  }),
-                  border: TableBorder.all(
-                    color: Colors.grey.shade300,
-                    width: 1,
-                    borderRadius: BorderRadius.circular(8),
-                    style: BorderStyle.none,
-                  ),
-                  columns: const [
-                    DataColumn(
-                      label: Text(
-                        'Nurse',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+          // Filter data by selected hall
+          final data = _selectedHall == null
+              ? allData
+              : allData.where((row) {
+                  if (row['nurse_name'] == 'TOTAL')
+                    return false; // Hide TOTAL when filtering
+                  final groups = row['assigned_groups']?.toString() ?? '';
+                  return groups.contains(_selectedHall!);
+                }).toList();
+
+          return Column(
+            children: [
+              // Hall Filter
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.teal.shade50,
+                child: Row(
+                  children: [
+                    const Icon(Icons.filter_list, color: Colors.teal),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Filter by Hall:',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedHall,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          isDense: true,
+                        ),
+                        items: [
+                          const DropdownMenuItem<String>(
+                            value: null,
+                            child: Text('All Halls'),
+                          ),
+                          ..._availableHalls.map(
+                            (hall) => DropdownMenuItem(
+                              value: hall,
+                              child: Text(hall),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() => _selectedHall = value);
+                        },
                       ),
                     ),
-                    DataColumn(
-                      label: Text(
-                        'Assigned Groups',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                    // Reset button - shows only when a hall is selected
+                    if (_selectedHall != null)
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.red),
+                        tooltip: 'Reset to All Halls',
+                        onPressed: () {
+                          setState(() => _selectedHall = null);
+                        },
                       ),
-                    ),
-                    DataColumn(
-                      label: Text(
-                        'Total Patients',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      numeric: true,
-                    ),
-                    DataColumn(
-                      label: Text(
-                        'BW Entered',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      numeric: true,
-                    ),
-                    DataColumn(
-                      label: Text(
-                        'Percentage',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      numeric: true,
-                    ),
                   ],
-                  rows: data.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final row = entry.value;
-                    final bool isTotal = row['nurse_name'] == 'TOTAL';
-
-                    // Style for TOTAL row
-                    final TextStyle textStyle = isTotal
-                        ? const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.black,
-                          )
-                        : const TextStyle(fontSize: 14);
-
-                    final Color? rowColor = isTotal
-                        ? Colors.amber.shade100
-                        : (index % 2 == 0 ? Colors.grey.shade50 : Colors.white);
-
-                    return DataRow(
-                      color: WidgetStateProperty.all(rowColor),
-                      cells: [
-                        DataCell(
-                          Text(
-                            row['nurse_name']?.toString() ?? '-',
-                            style: textStyle,
-                          ),
-                        ),
-                        DataCell(
-                          _buildAssignedGroupsCell(
-                            row['assigned_groups'],
-                            row['nurse_name'],
-                            isTotal,
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            row['total_patients']?.toString() ?? '0',
-                            style: textStyle,
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            row['bw_entered_this_month']?.toString() ?? '0',
-                            style: textStyle,
-                          ),
-                        ),
-                        DataCell(
-                          _buildPercentageCell(
-                            row['bw_percentage'],
-                            textStyle,
-                            isTotal,
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
                 ),
               ),
-            ),
+              // Data Table
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: DataTable(
+                        headingRowColor: WidgetStateProperty.all(
+                          Colors.teal.shade50,
+                        ),
+                        dataRowColor: WidgetStateProperty.resolveWith<Color?>((
+                          Set<WidgetState> states,
+                        ) {
+                          return null; // Default
+                        }),
+                        border: TableBorder.all(
+                          color: Colors.grey.shade300,
+                          width: 1,
+                          borderRadius: BorderRadius.circular(8),
+                          style: BorderStyle.none,
+                        ),
+                        columns: const [
+                          DataColumn(
+                            label: Text(
+                              'Nurse',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'Assigned Groups',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'Total Patients',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            numeric: true,
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'BW Entered',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            numeric: true,
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'Percentage',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            numeric: true,
+                          ),
+                        ],
+                        rows: data.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final row = entry.value;
+                          final bool isTotal = row['nurse_name'] == 'TOTAL';
+
+                          // Style for TOTAL row
+                          final TextStyle textStyle = isTotal
+                              ? const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Colors.black,
+                                )
+                              : const TextStyle(fontSize: 14);
+
+                          final Color? rowColor = isTotal
+                              ? Colors.amber.shade100
+                              : (index % 2 == 0
+                                    ? Colors.grey.shade50
+                                    : Colors.white);
+
+                          return DataRow(
+                            color: WidgetStateProperty.all(rowColor),
+                            cells: [
+                              DataCell(
+                                Text(
+                                  row['nurse_name']?.toString() ?? '-',
+                                  style: textStyle,
+                                ),
+                              ),
+                              DataCell(
+                                _buildAssignedGroupsCell(
+                                  row['assigned_groups'],
+                                  row['nurse_name'],
+                                  isTotal,
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  row['total_patients']?.toString() ?? '0',
+                                  style: textStyle,
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  row['bw_entered_this_month']?.toString() ??
+                                      '0',
+                                  style: textStyle,
+                                ),
+                              ),
+                              DataCell(
+                                _buildPercentageCell(
+                                  row['bw_percentage'],
+                                  textStyle,
+                                  isTotal,
+                                ),
+                              ),
+                            ],
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),

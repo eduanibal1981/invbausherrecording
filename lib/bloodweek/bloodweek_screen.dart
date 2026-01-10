@@ -421,11 +421,11 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
               'ureapost',
             ]),
             _buildSection('Dialysis Efficiency', [
-              'effurr',
-              'effktv',
               'ufdone',
               'timetaken',
               'wtpost',
+              'effurr',
+              'effktv',
             ]),
           ],
         ),
@@ -471,10 +471,14 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
   }
 
   Widget _buildTextField(String label, String key) {
+    // Auto-calculated fields (read-only)
+    final isReadOnly = key == 'effurr' || key == 'effktv';
+
     // Define validation ranges for medical values
     String? validator(String? value) {
       if (value == null || value.isEmpty) return null;
       if (key == 'staffenter') return null; // Skip validation for text field
+      if (isReadOnly) return null; // Skip validation for read-only fields
 
       final num = double.tryParse(value);
       if (num == null) return 'Enter valid number';
@@ -506,10 +510,13 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
 
     return TextFormField(
       controller: controller.controllers[key],
+      readOnly: isReadOnly,
       decoration: InputDecoration(
-        labelText: label,
+        labelText: isReadOnly ? '$label (Auto)' : label,
         border: const OutlineInputBorder(),
         isDense: true,
+        filled: isReadOnly,
+        fillColor: isReadOnly ? Colors.yellow.shade100 : null,
       ),
       keyboardType: key == 'staffenter'
           ? TextInputType.text
