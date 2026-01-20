@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:invbausherrecording/bloodweek/bloodweek_screen.dart';
-import 'parathyroid_screen.dart';
-import 'iron_profile_screen.dart';
+import '../investigations/bloodweek/bloodweek_screen.dart';
+import '../investigations/parathyroid_screen.dart';
+import '../investigations/iron_profile_screen.dart';
+import '../vascandecg/vascular_upload_screen.dart';
 
 class PatientDashboardScreenV2 extends StatefulWidget {
   final Map<String, dynamic> patient;
@@ -112,6 +113,25 @@ class _PatientDashboardScreenV2State extends State<PatientDashboardScreenV2> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => IronProfileScreen(
+                    patient: _currentPatient,
+                    staffRole: widget.staffRole,
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildMenuItem(
+            context,
+            title: 'Vascular/Doppler Images',
+            icon: Icons.monitor_heart,
+            color: Colors.teal.shade100,
+            iconColor: Colors.teal.shade900,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => VascularUploadScreen(
                     patient: _currentPatient,
                     staffRole: widget.staffRole,
                   ),

@@ -197,6 +197,13 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                           ),
                           DataColumn(
                             label: Text(
+                              'Percentage',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            numeric: true,
+                          ),
+                          DataColumn(
+                            label: Text(
                               'Assigned Groups',
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
@@ -211,13 +218,6 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                           DataColumn(
                             label: Text(
                               'BW Entered',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            numeric: true,
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'Percentage',
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                             numeric: true,
@@ -253,6 +253,13 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                                 ),
                               ),
                               DataCell(
+                                _buildPercentageCell(
+                                  row['bw_percentage'],
+                                  textStyle,
+                                  isTotal,
+                                ),
+                              ),
+                              DataCell(
                                 _buildAssignedGroupsCell(
                                   row['assigned_groups'],
                                   row['nurse_name'],
@@ -270,13 +277,6 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                                   row['bw_entered_this_month']?.toString() ??
                                       '0',
                                   style: textStyle,
-                                ),
-                              ),
-                              DataCell(
-                                _buildPercentageCell(
-                                  row['bw_percentage'],
-                                  textStyle,
-                                  isTotal,
                                 ),
                               ),
                             ],

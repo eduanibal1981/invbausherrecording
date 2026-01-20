@@ -3,7 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'filter_screen.dart';
 import 'patient_dashboard_screen_v2.dart';
-import 'administration_screen.dart';
+import '../admin/administration_screen.dart';
+import '../admin/nurse_patient_summary_screen.dart';
 import 'about_screen.dart';
 
 class PatientListScreen extends StatefulWidget {
@@ -211,6 +212,18 @@ class _PatientListScreenState extends State<PatientListScreen> {
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.leaderboard),
+            tooltip: 'Nurse Patient Summary',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NursePatientSummaryScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: Icon(
               Icons.filter_list,
