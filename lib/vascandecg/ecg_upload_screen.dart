@@ -1,0 +1,640 @@
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import '../services/cloudinary_service.dart';
+
+class EcgUploadScreen extends StatefulWidget {
+  final Map<String, dynamic> patient;
+  final String? staffRole;
+
+  const EcgUploadScreen({super.key, required this.patient, this.staffRole});
+
+  @override
+  State<EcgUploadScreen> createState() => _EcgUploadScreenState();
+}
+
+class _EcgUploadScreenState extends State<EcgUploadScreen> {
+  final ImagePicker _picker = ImagePicker();
+  List<Uint8List> _selectedImagesBytes = [];
+  bool _isUploading = false;
+  bool _isLoading = false;
+  List<Map<String, dynamic>> _uploadedImages = [];
+  int _uploadProgress = 0;
+  int _totalUploads = 0;
+
+  // Note editing
+  final TextEditingController _noteController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUploadedImages();
+  }
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchUploadedImages() async {
+    setState(() => _isLoading = true);
+    try {
+      final images = await CloudinaryService.fetchEcgImages(
+        widget.patient['pcid'].toString(),
+      );
+      setState(() => _uploadedImages = images);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading images: $e')));
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _pickImages(ImageSource source) async {
+    try {
+      if (source == ImageSource.camera) {
+        final XFile? image = await _picker.pickImage(
+          source: ImageSource.camera,
+          maxWidth: 2000,
+          maxHeight: 2000,
+          imageQuality: 85,
+        );
+        if (image != null) {
+          final bytes = await image.readAsBytes();
+          setState(() {
+            _selectedImagesBytes.add(bytes);
+          });
+        }
+      } else {
+        // Multi entry
+        final List<XFile> images = await _picker.pickMultiImage(
+          maxWidth: 2000,
+          maxHeight: 2000,
+          imageQuality: 85,
+        );
+        if (images.isNotEmpty) {
+          for (var img in images) {
+            final bytes = await img.readAsBytes();
+            _selectedImagesBytes.add(bytes);
+          }
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error picking images: $e')));
+      }
+    }
+  }
+
+  Future<void> _uploadImages() async {
+    if (_selectedImagesBytes.isEmpty) return;
+
+    setState(() {
+      _isUploading = true;
+      _totalUploads = _selectedImagesBytes.length;
+      _uploadProgress = 0;
+    });
+
+    int successCount = 0;
+    int failCount = 0;
+
+    try {
+      for (final bytes in _selectedImagesBytes) {
+        final result = await CloudinaryService.uploadEcgImage(
+          imageBytes: bytes,
+          pcid: widget.patient['pcid'].toString(),
+        );
+
+        if (result.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+        setState(() => _uploadProgress++);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Upload finished: $successCount success, $failCount failed',
+            ),
+            backgroundColor: failCount == 0 ? Colors.green : Colors.orange,
+          ),
+        );
+        setState(() {
+          _selectedImagesBytes.clear();
+        });
+        _fetchUploadedImages();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error uploading: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isUploading = false);
+    }
+  }
+
+  Future<void> _deleteImage(Map<String, dynamic> image) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Image'),
+        content: const Text('Are you sure you want to delete this ECG?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      final result = await CloudinaryService.deleteEcgImage(image);
+      if (!mounted) return;
+      if (result.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message ?? 'Image deleted'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _fetchUploadedImages();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message ?? 'Failed to delete image'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showFullImage(String imageUrl) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                                loadingProgress.expectedTotalBytes!
+                          : null,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.patient['name'] ?? 'Unknown'),
+            Text(
+              'ID: ${widget.patient['pcid']}',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const Text('         == ECG ==', style: TextStyle(fontSize: 14)),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          // Review Note
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            color: Colors.orange.shade50,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: Colors.orange.shade800,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Ensure grid lines are clearly visible in the photo.',
+                    style: TextStyle(fontSize: 13, color: Colors.black87),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Upload Section
+          Card(
+            margin: const EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Upload ECG Strip',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Image Source Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isUploading
+                              ? null
+                              : () => _pickImages(ImageSource.camera),
+                          icon: const Icon(Icons.camera_alt),
+                          label: const Text('Camera'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isUploading
+                              ? null
+                              : () => _pickImages(ImageSource.gallery),
+                          icon: const Icon(Icons.photo_library),
+                          label: const Text('Gallery (Multi)'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // Image Preview
+                  if (_selectedImagesBytes.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Selected: ${_selectedImagesBytes.length} images',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 100,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _selectedImagesBytes.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          return Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.memory(
+                                  _selectedImagesBytes[index],
+                                  height: 100,
+                                  width: 100,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    if (!_isUploading) {
+                                      setState(() {
+                                        _selectedImagesBytes.removeAt(index);
+                                      });
+                                    }
+                                  },
+                                  child: Container(
+                                    color: Colors.black54,
+                                    child: const Icon(
+                                      Icons.close,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isUploading
+                                ? null
+                                : () => setState(() {
+                                    _selectedImagesBytes.clear();
+                                  }),
+                            child: const Text('Clear All'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _isUploading ? null : _uploadImages,
+                            icon: _isUploading
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.cloud_upload),
+                            label: Text(
+                              _isUploading
+                                  ? 'Uploading $_uploadProgress/$_totalUploads'
+                                  : 'Upload All',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          // Divider
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(child: Divider()),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text('Uploaded ECGs'),
+                ),
+                Expanded(child: Divider()),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Images Grid
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _uploadedImages.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.monitor_heart_outlined,
+                          size: 64,
+                          color: Colors.grey,
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'No ECGs uploaded yet',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _fetchUploadedImages,
+                    child: GridView.builder(
+                      padding: const EdgeInsets.all(16),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                      itemCount: _uploadedImages.length,
+                      itemBuilder: (context, index) {
+                        final image = _uploadedImages[index];
+                        return _buildImageGridItem(image);
+                      },
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageGridItem(Map<String, dynamic> image) {
+    final thumbnailUrl = image['thumbnail_url'] ?? image['piclink'];
+    final fullUrl = image['large_url'] ?? image['piclink'];
+    final hasNote =
+        image['clinicalnote'] != null &&
+        image['clinicalnote'].toString().isNotEmpty;
+
+    // Parse date
+    String dateStr = '';
+    if (image['created_at'] != null) {
+      try {
+        final date = DateTime.parse(image['created_at'].toString()).toLocal();
+        dateStr =
+            '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+        // Or nicer format if package:intl is imported (it is imported in file header? no, double check)
+        // I see no imports in this snippet, assuming standard parsing for now.
+        // Wait, file header earlier showed import 'package:intl/intl.dart';?
+        // Let's use simple string logic or check imports.
+        // Actually, let's look at imports first.
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: GestureDetector(
+            onTap: () => _showFullImage(fullUrl),
+            onLongPress: () => _deleteImage(image),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    thumbnailUrl,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) {
+                        return child;
+                      }
+                      return Container(
+                        color: Colors.grey[200],
+                        child: const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stack) {
+                      return Container(
+                        color: Colors.grey[300],
+                        child: const Icon(
+                          Icons.broken_image,
+                          color: Colors.grey,
+                        ),
+                      );
+                    },
+                  ),
+                  // Note Icon (Top Right)
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: GestureDetector(
+                      onTap: () => _showNoteDialog(image),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Icon(
+                          hasNote ? Icons.description : Icons.note_add_outlined,
+                          color: hasNote ? Colors.blueAccent : Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Zoom Icon (Bottom Right)
+                  Positioned(
+                    right: 4,
+                    bottom: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(
+                        Icons.zoom_in,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (dateStr.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            dateStr,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ],
+    );
+  }
+
+  void _showNoteDialog(Map<String, dynamic> image) {
+    _noteController.text = image['clinicalnote'] ?? '';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clinical Note'),
+        content: TextField(
+          controller: _noteController,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'Enter doctor comments...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final newNote = _noteController.text.trim();
+              final success = await CloudinaryService.updateEcgClinicalNote(
+                image['id'],
+                newNote,
+              );
+
+              if (mounted) {
+                Navigator.pop(context);
+                if (success) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Note saved successfully')),
+                  );
+                  // Update local state without full refresh
+                  setState(() {
+                    image['clinicalnote'] = newNote;
+                  });
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to save note')),
+                  );
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -110,7 +110,14 @@ class _PatientListScreenState extends State<PatientListScreen> {
       setState(() {
         _filters = result;
       });
-      _applyFilters();
+
+      // Special handling: if "No Vascular Images" OR "No ECG Images" is active, we check DB consistency first
+      if (_filters['showNoVascularImages'] == true ||
+          _filters['showNoEcgImages'] == true) {
+        await _refreshMediaStatus();
+      } else {
+        _applyFilters();
+      }
     }
   }
 
@@ -156,6 +163,26 @@ class _PatientListScreenState extends State<PatientListScreen> {
     }
   }
 
+  Future<void> _refreshMediaStatus() async {
+    try {
+      if (mounted) setState(() => _isLoadingFilter = true);
+
+      // 1. Call RPC to update the columns in DB
+      await Supabase.instance.client.rpc('refresh_media_status');
+
+      // 2. Refetch the patients to get fresh has_doppler / has_ecg values
+      _refreshPatients();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error refreshing media status: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingFilter = false);
+    }
+  }
+
   List<Map<String, dynamic>> _applyClientSideFilters(
     List<Map<String, dynamic>> allPatients,
   ) {
@@ -193,6 +220,24 @@ class _PatientListScreenState extends State<PatientListScreen> {
       if (showLabNotRecorded) {
         final lastBw = patient['lastbwcollected']?.toString() ?? '';
         if (lastBw == currentMonth) {
+          return false;
+        }
+      }
+
+      // 5. No Vascular Images Filter (using the has_doppler column)
+      // We want patients where has_doppler is FALSE or NULL
+      if (_filters['showNoVascularImages'] == true) {
+        final hasDoppler = patient['has_doppler'];
+        if (hasDoppler == true) {
+          return false;
+        }
+      }
+
+      // 6. No ECG Images Filter (using the has_ecg column)
+      // We want patients where has_ecg is FALSE or NULL
+      if (_filters['showNoEcgImages'] == true) {
+        final hasEcg = patient['has_ecg'];
+        if (hasEcg == true) {
           return false;
         }
       }

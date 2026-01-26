@@ -15,6 +15,8 @@ class _FilterScreenState extends State<FilterScreen> {
   String? _day;
   String? _shift;
   bool _showLabNotRecorded = false;
+  bool _showNoVascularImages = false;
+  bool _showNoEcgImages = false;
 
   @override
   void initState() {
@@ -24,6 +26,9 @@ class _FilterScreenState extends State<FilterScreen> {
     _day = widget.initialFilters['day'];
     _shift = widget.initialFilters['shift'];
     _showLabNotRecorded = widget.initialFilters['showLabNotRecorded'] ?? false;
+    _showNoVascularImages =
+        widget.initialFilters['showNoVascularImages'] ?? false;
+    _showNoEcgImages = widget.initialFilters['showNoEcgImages'] ?? false;
   }
 
   @override
@@ -40,6 +45,8 @@ class _FilterScreenState extends State<FilterScreen> {
       if (_day != null) 'day': _day,
       if (_shift != null) 'shift': _shift,
       if (_showLabNotRecorded) 'showLabNotRecorded': true,
+      if (_showNoVascularImages) 'showNoVascularImages': true,
+      if (_showNoEcgImages) 'showNoEcgImages': true,
     });
   }
 
@@ -200,6 +207,40 @@ class _FilterScreenState extends State<FilterScreen> {
               activeColor: Colors.orange,
               onChanged: (val) =>
                   setState(() => _showLabNotRecorded = val ?? false),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 0,
+            color: Colors.red.shade50,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.red.shade100),
+            ),
+            child: CheckboxListTile(
+              title: const Text('Show Patients with No Vascular Images'),
+              subtitle: const Text('Filtered by missing Doppler images'),
+              value: _showNoVascularImages,
+              activeColor: Colors.red,
+              onChanged: (val) =>
+                  setState(() => _showNoVascularImages = val ?? false),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 0,
+            color: Colors.pink.shade50,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.pink.shade100),
+            ),
+            child: CheckboxListTile(
+              title: const Text('Show Patients with No ECG Images'),
+              subtitle: const Text('Filtered by missing ECG images'),
+              value: _showNoEcgImages,
+              activeColor: Colors.pink,
+              onChanged: (val) =>
+                  setState(() => _showNoEcgImages = val ?? false),
             ),
           ),
           const SizedBox(height: 32),

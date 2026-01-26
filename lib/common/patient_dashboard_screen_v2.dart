@@ -3,6 +3,7 @@ import '../investigations/bloodweek/bloodweek_screen.dart';
 import '../investigations/parathyroid_screen.dart';
 import '../investigations/iron_profile_screen.dart';
 import '../vascandecg/vascular_upload_screen.dart';
+import '../vascandecg/ecg_upload_screen.dart';
 
 class PatientDashboardScreenV2 extends StatefulWidget {
   final Map<String, dynamic> patient;
@@ -132,6 +133,25 @@ class _PatientDashboardScreenV2State extends State<PatientDashboardScreenV2> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => VascularUploadScreen(
+                    patient: _currentPatient,
+                    staffRole: widget.staffRole,
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildMenuItem(
+            context,
+            title: 'ECG ',
+            icon: Icons.monitor_heart_outlined,
+            color: Colors.pink.shade100,
+            iconColor: Colors.pink.shade900,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => EcgUploadScreen(
                     patient: _currentPatient,
                     staffRole: widget.staffRole,
                   ),

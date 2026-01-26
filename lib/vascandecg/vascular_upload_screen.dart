@@ -1,4 +1,6 @@
-import 'dart:typed_data';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/cloudinary_service.dart';
@@ -19,10 +21,12 @@ class VascularUploadScreen extends StatefulWidget {
 
 class _VascularUploadScreenState extends State<VascularUploadScreen> {
   final ImagePicker _picker = ImagePicker();
-  Uint8List? _selectedImageBytes;
+  List<XFile> _selectedFiles = [];
   bool _isUploading = false;
   bool _isLoading = false;
   List<Map<String, dynamic>> _uploadedImages = [];
+  int _uploadProgress = 0;
+  int _totalUploads = 0;
 
   @override
   void initState() {
@@ -48,57 +52,104 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
     }
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickFiles(ImageSource source) async {
     try {
-      final XFile? image = await _picker.pickImage(
-        source: source,
-        maxWidth: 2000,
-        maxHeight: 2000,
-        imageQuality: 85,
-      );
-      if (image != null) {
-        // Read bytes immediately for web compatibility
-        final bytes = await image.readAsBytes();
-        setState(() {
-          _selectedImageBytes = bytes;
-        });
+      if (source == ImageSource.camera) {
+        final XFile? image = await _picker.pickImage(
+          source: source,
+          maxWidth: 2000,
+          maxHeight: 2000,
+          imageQuality: 85,
+        );
+        if (image != null) {
+          setState(() {
+            _selectedFiles.add(image);
+          });
+        }
+      } else {
+        final List<XFile> files = await _picker.pickMultipleMedia();
+        if (files.isNotEmpty) {
+          setState(() {
+            _selectedFiles.addAll(files);
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error picking image: $e')));
+        ).showSnackBar(SnackBar(content: Text('Error picking files: $e')));
       }
     }
   }
 
-  Future<void> _uploadImage() async {
-    if (_selectedImageBytes == null) return;
+  bool _isVideo(String path) {
+    final lowerPath = path.toLowerCase();
+    return lowerPath.endsWith('.mp4') ||
+        lowerPath.endsWith('.mov') ||
+        lowerPath.endsWith('.avi') ||
+        lowerPath.endsWith('.mkv');
+  }
 
-    setState(() => _isUploading = true);
+  Future<void> _uploadFiles() async {
+    if (_selectedFiles.isEmpty) return;
+
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0;
+      _totalUploads = _selectedFiles.length;
+    });
+
+    int successCount = 0;
+    List<String> errors = [];
 
     try {
-      final result = await CloudinaryService.uploadDopplerImage(
-        imageBytes: _selectedImageBytes!,
-        pcid: widget.patient['pcid'].toString(),
-      );
+      for (final file in _selectedFiles) {
+        try {
+          final bytes = await file.readAsBytes();
+          final isVideo = _isVideo(file.path);
+
+          final result = isVideo
+              ? await CloudinaryService.uploadDopplerVideo(
+                  videoBytes: bytes,
+                  pcid: widget.patient['pcid'].toString(),
+                )
+              : await CloudinaryService.uploadDopplerImage(
+                  imageBytes: bytes,
+                  pcid: widget.patient['pcid'].toString(),
+                );
+
+          if (result.success) {
+            successCount++;
+            setState(() {
+              _uploadProgress = successCount;
+            });
+          } else {
+            errors.add(result.message ?? 'Unknown error');
+          }
+        } catch (e) {
+          errors.add(e.toString());
+        }
+      }
 
       if (mounted) {
-        if (result.success) {
+        if (successCount > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result.message ?? 'Upload successful!'),
+              content: Text('Successfully uploaded $successCount files'),
               backgroundColor: Colors.green,
             ),
           );
           setState(() {
-            _selectedImageBytes = null;
+            _selectedFiles.clear();
           });
           _fetchUploadedImages();
-        } else {
+        }
+
+        if (errors.isNotEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result.message ?? 'Upload failed'),
+              content: Text('Failed to upload ${errors.length} files'),
               backgroundColor: Colors.red,
             ),
           );
@@ -108,13 +159,15 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error uploading: $e'),
+            content: Text('Error uploading files: $e'),
             backgroundColor: Colors.red,
           ),
         );
       }
     } finally {
-      setState(() => _isUploading = false);
+      if (mounted) {
+        setState(() => _isUploading = false);
+      }
     }
   }
 
@@ -161,6 +214,24 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
   }
 
   void _showFullImage(String imageUrl) {
+    final lowerUrl = imageUrl.toLowerCase();
+    final isVideo =
+        lowerUrl.endsWith('.mp4') ||
+        lowerUrl.endsWith('.mov') ||
+        lowerUrl.endsWith('.avi') ||
+        lowerUrl.endsWith('.mkv');
+
+    if (isVideo) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Video playback not supported in this version.'),
+          ),
+        );
+      }
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -207,7 +278,7 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
               style: const TextStyle(fontSize: 12),
             ),
             const Text(
-              '         ==Vascular/Doppler Images==',
+              '         == Vascular ==',
               style: TextStyle(fontSize: 14),
             ),
           ],
@@ -224,7 +295,7 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    'Upload New Image',
+                    'Upload New Images/Videos',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
@@ -236,9 +307,9 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                         child: OutlinedButton.icon(
                           onPressed: _isUploading
                               ? null
-                              : () => _pickImage(ImageSource.camera),
+                              : () => _pickFiles(ImageSource.camera),
                           icon: const Icon(Icons.camera_alt),
-                          label: const Text('Camera'),
+                          label: const Text('Capture'),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
@@ -249,7 +320,7 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                         child: OutlinedButton.icon(
                           onPressed: _isUploading
                               ? null
-                              : () => _pickImage(ImageSource.gallery),
+                              : () => _pickFiles(ImageSource.gallery),
                           icon: const Icon(Icons.photo_library),
                           label: const Text('Gallery'),
                           style: OutlinedButton.styleFrom(
@@ -260,19 +331,105 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                     ],
                   ),
 
-                  // Image Preview
-                  if (_selectedImageBytes != null) ...[
+                  // Selected Files Preview
+                  if (_selectedFiles.isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.memory(
-                        _selectedImageBytes!,
-                        height: 200,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
+                    SizedBox(
+                      height: 120,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _selectedFiles.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          final file = _selectedFiles[index];
+                          final isVideo = _isVideo(file.path);
+                          return Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: kIsWeb
+                                    ? Image.network(
+                                        file.path,
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          width: 100,
+                                          height: 100,
+                                          color: Colors.grey,
+                                          child: const Icon(Icons.error),
+                                        ),
+                                      )
+                                    : (isVideo
+                                          ? Container(
+                                              width: 100,
+                                              height: 100,
+                                              color: Colors.black,
+                                              child: const Center(
+                                                child: Icon(
+                                                  Icons.videocam,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            )
+                                          : Image.file(
+                                              File(file.path),
+                                              width: 100,
+                                              height: 100,
+                                              fit: BoxFit.cover,
+                                            )),
+                              ),
+                              if (isVideo)
+                                const Positioned.fill(
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.play_circle,
+                                      color: Colors.white,
+                                      size: 30,
+                                    ),
+                                  ),
+                                ),
+                              Positioned(
+                                top: 0,
+                                right: 0,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedFiles.removeAt(index);
+                                    });
+                                  },
+                                  child: Container(
+                                    color: Colors.black54,
+                                    child: const Icon(
+                                      Icons.close,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(height: 16),
+
+                    // Upload Progress
+                    if (_isUploading) ...[
+                      LinearProgressIndicator(
+                        value: _totalUploads > 0
+                            ? _uploadProgress / _totalUploads
+                            : 0,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Uploading $_uploadProgress / $_totalUploads files...',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
                     Row(
                       children: [
                         Expanded(
@@ -280,7 +437,7 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                             onPressed: _isUploading
                                 ? null
                                 : () => setState(() {
-                                    _selectedImageBytes = null;
+                                    _selectedFiles.clear();
                                   }),
                             child: const Text('Cancel'),
                           ),
@@ -288,7 +445,7 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                         const SizedBox(width: 16),
                         Expanded(
                           child: FilledButton.icon(
-                            onPressed: _isUploading ? null : _uploadImage,
+                            onPressed: _isUploading ? null : _uploadFiles,
                             icon: _isUploading
                                 ? const SizedBox(
                                     width: 16,
@@ -300,7 +457,9 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                                   )
                                 : const Icon(Icons.cloud_upload),
                             label: Text(
-                              _isUploading ? 'Uploading...' : 'Upload',
+                              _isUploading
+                                  ? 'Uploading...'
+                                  : 'Upload ${_selectedFiles.length} Items',
                             ),
                           ),
                         ),
@@ -366,6 +525,10 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                         final thumbnailUrl =
                             image['thumbnail_url'] ?? image['piclink'];
                         final fullUrl = image['large_url'] ?? image['piclink'];
+                        final isVideo =
+                            fullUrl.toLowerCase().endsWith('.mp4') ||
+                            fullUrl.toLowerCase().endsWith('.mov') ||
+                            fullUrl.toLowerCase().endsWith('.avi');
 
                         return GestureDetector(
                           onTap: () => _showFullImage(fullUrl),
@@ -402,6 +565,14 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                                     );
                                   },
                                 ),
+                                if (isVideo)
+                                  const Center(
+                                    child: Icon(
+                                      Icons.play_circle_outline,
+                                      color: Colors.white,
+                                      size: 40,
+                                    ),
+                                  ),
                                 Positioned(
                                   right: 4,
                                   bottom: 4,
