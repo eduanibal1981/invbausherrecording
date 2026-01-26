@@ -111,9 +111,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
         _filters = result;
       });
 
-      // Special handling: if "No Vascular Images" OR "No ECG Images" is active, we check DB consistency first
-      if (_filters['showNoVascularImages'] == true ||
-          _filters['showNoEcgImages'] == true) {
+      // Special handling: if Vascular or ECG filter is active, we check DB consistency first
+      if (_filters['vascularFilter'] != null || _filters['ecgFilter'] != null) {
         await _refreshMediaStatus();
       } else {
         _applyFilters();
@@ -224,20 +223,30 @@ class _PatientListScreenState extends State<PatientListScreen> {
         }
       }
 
-      // 5. No Vascular Images Filter (using the has_doppler column)
-      // We want patients where has_doppler is FALSE or NULL
-      if (_filters['showNoVascularImages'] == true) {
-        final hasDoppler = patient['has_doppler'];
-        if (hasDoppler == true) {
+      // 5. Vascular Images Filter (using the has_doppler column)
+      final vascularFilter = _filters['vascularFilter'];
+      if (vascularFilter == 'has') {
+        // Show only patients WITH vascular images
+        if (patient['has_doppler'] != true) {
+          return false;
+        }
+      } else if (vascularFilter == 'none') {
+        // Show only patients WITHOUT vascular images
+        if (patient['has_doppler'] == true) {
           return false;
         }
       }
 
-      // 6. No ECG Images Filter (using the has_ecg column)
-      // We want patients where has_ecg is FALSE or NULL
-      if (_filters['showNoEcgImages'] == true) {
-        final hasEcg = patient['has_ecg'];
-        if (hasEcg == true) {
+      // 6. ECG Images Filter (using the has_ecg column)
+      final ecgFilter = _filters['ecgFilter'];
+      if (ecgFilter == 'has') {
+        // Show only patients WITH ECG images
+        if (patient['has_ecg'] != true) {
+          return false;
+        }
+      } else if (ecgFilter == 'none') {
+        // Show only patients WITHOUT ECG images
+        if (patient['has_ecg'] == true) {
           return false;
         }
       }

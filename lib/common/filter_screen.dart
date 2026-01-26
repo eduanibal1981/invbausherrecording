@@ -15,8 +15,8 @@ class _FilterScreenState extends State<FilterScreen> {
   String? _day;
   String? _shift;
   bool _showLabNotRecorded = false;
-  bool _showNoVascularImages = false;
-  bool _showNoEcgImages = false;
+  String? _vascularFilter; // null = Any, 'has' = Has Images, 'none' = No Images
+  String? _ecgFilter; // null = Any, 'has' = Has Images, 'none' = No Images
 
   @override
   void initState() {
@@ -26,9 +26,8 @@ class _FilterScreenState extends State<FilterScreen> {
     _day = widget.initialFilters['day'];
     _shift = widget.initialFilters['shift'];
     _showLabNotRecorded = widget.initialFilters['showLabNotRecorded'] ?? false;
-    _showNoVascularImages =
-        widget.initialFilters['showNoVascularImages'] ?? false;
-    _showNoEcgImages = widget.initialFilters['showNoEcgImages'] ?? false;
+    _vascularFilter = widget.initialFilters['vascularFilter'];
+    _ecgFilter = widget.initialFilters['ecgFilter'];
   }
 
   @override
@@ -45,8 +44,8 @@ class _FilterScreenState extends State<FilterScreen> {
       if (_day != null) 'day': _day,
       if (_shift != null) 'shift': _shift,
       if (_showLabNotRecorded) 'showLabNotRecorded': true,
-      if (_showNoVascularImages) 'showNoVascularImages': true,
-      if (_showNoEcgImages) 'showNoEcgImages': true,
+      if (_vascularFilter != null) 'vascularFilter': _vascularFilter,
+      if (_ecgFilter != null) 'ecgFilter': _ecgFilter,
     });
   }
 
@@ -217,13 +216,44 @@ class _FilterScreenState extends State<FilterScreen> {
               borderRadius: BorderRadius.circular(12),
               side: BorderSide(color: Colors.red.shade100),
             ),
-            child: CheckboxListTile(
-              title: const Text('Show Patients with No Vascular Images'),
-              subtitle: const Text('Filtered by missing Doppler images'),
-              value: _showNoVascularImages,
-              activeColor: Colors.red,
-              onChanged: (val) =>
-                  setState(() => _showNoVascularImages = val ?? false),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Vascular/Doppler Images',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _vascularFilter,
+                    decoration: InputDecoration(
+                      labelText: 'Filter By',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 0,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Any')),
+                      DropdownMenuItem(value: 'has', child: Text('Has Images')),
+                      DropdownMenuItem(value: 'none', child: Text('No Images')),
+                    ],
+                    onChanged: (val) => setState(() => _vascularFilter = val),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -234,13 +264,44 @@ class _FilterScreenState extends State<FilterScreen> {
               borderRadius: BorderRadius.circular(12),
               side: BorderSide(color: Colors.pink.shade100),
             ),
-            child: CheckboxListTile(
-              title: const Text('Show Patients with No ECG Images'),
-              subtitle: const Text('Filtered by missing ECG images'),
-              value: _showNoEcgImages,
-              activeColor: Colors.pink,
-              onChanged: (val) =>
-                  setState(() => _showNoEcgImages = val ?? false),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ECG Images',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.pink.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _ecgFilter,
+                    decoration: InputDecoration(
+                      labelText: 'Filter By',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 0,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Any')),
+                      DropdownMenuItem(value: 'has', child: Text('Has Images')),
+                      DropdownMenuItem(value: 'none', child: Text('No Images')),
+                    ],
+                    onChanged: (val) => setState(() => _ecgFilter = val),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 32),
