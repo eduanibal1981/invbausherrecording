@@ -17,6 +17,7 @@ class _FilterScreenState extends State<FilterScreen> {
   bool _showLabNotRecorded = false;
   String? _vascularFilter; // null = Any, 'has' = Has Images, 'none' = No Images
   String? _ecgFilter; // null = Any, 'has' = Has Images, 'none' = No Images
+  String? _vaccessFilter; // null = Any, or specific access type
 
   @override
   void initState() {
@@ -28,6 +29,7 @@ class _FilterScreenState extends State<FilterScreen> {
     _showLabNotRecorded = widget.initialFilters['showLabNotRecorded'] ?? false;
     _vascularFilter = widget.initialFilters['vascularFilter'];
     _ecgFilter = widget.initialFilters['ecgFilter'];
+    _vaccessFilter = widget.initialFilters['vaccessFilter'];
   }
 
   @override
@@ -46,6 +48,7 @@ class _FilterScreenState extends State<FilterScreen> {
       if (_showLabNotRecorded) 'showLabNotRecorded': true,
       if (_vascularFilter != null) 'vascularFilter': _vascularFilter,
       if (_ecgFilter != null) 'ecgFilter': _ecgFilter,
+      if (_vaccessFilter != null) 'vaccessFilter': _vaccessFilter,
     });
   }
 
@@ -299,6 +302,58 @@ class _FilterScreenState extends State<FilterScreen> {
                       DropdownMenuItem(value: 'none', child: Text('No Images')),
                     ],
                     onChanged: (val) => setState(() => _ecgFilter = val),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 0,
+            color: Colors.purple.shade50,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.purple.shade100),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Vascular Access Type',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.purple.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _vaccessFilter,
+                    decoration: InputDecoration(
+                      labelText: 'Filter By Access Type',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 0,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Any')),
+                      DropdownMenuItem(value: 'AVF', child: Text('AVF')),
+                      DropdownMenuItem(value: 'AVG', child: Text('AVG')),
+                      DropdownMenuItem(
+                        value: 'Perm. Cath',
+                        child: Text('Perm. Cath'),
+                      ),
+                    ],
+                    onChanged: (val) => setState(() => _vaccessFilter = val),
                   ),
                 ],
               ),

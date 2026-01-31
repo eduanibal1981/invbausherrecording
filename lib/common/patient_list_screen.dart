@@ -251,6 +251,15 @@ class _PatientListScreenState extends State<PatientListScreen> {
         }
       }
 
+      // 7. Vascular Access Type Filter (using the vaccess column)
+      final vaccessFilter = _filters['vaccessFilter'];
+      if (vaccessFilter != null) {
+        final patientVaccess = patient['vaccess']?.toString() ?? '';
+        if (patientVaccess != vaccessFilter) {
+          return false;
+        }
+      }
+
       return true;
     }).toList();
   }

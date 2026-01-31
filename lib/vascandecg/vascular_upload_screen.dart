@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/cloudinary_service.dart';
 
 class VascularUploadScreen extends StatefulWidget {
@@ -28,10 +29,63 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
   int _uploadProgress = 0;
   int _totalUploads = 0;
 
+  // Vascular Access Type
+  String? _currentVaccess;
+  String? _selectedVaccess;
+  bool _isSavingVaccess = false;
+
+  final List<String> _vaccessOptions = ['AVF', 'AVG', 'Perm. Cath'];
+
   @override
   void initState() {
     super.initState();
+    _loadCurrentVaccess();
     _fetchUploadedImages();
+  }
+
+  void _loadCurrentVaccess() {
+    final vaccess = widget.patient['vaccess']?.toString();
+    setState(() {
+      _currentVaccess = vaccess;
+      _selectedVaccess = vaccess;
+    });
+  }
+
+  Future<void> _saveVaccess() async {
+    if (_selectedVaccess == null || _selectedVaccess == _currentVaccess) return;
+
+    setState(() => _isSavingVaccess = true);
+    try {
+      await Supabase.instance.client
+          .from('patients')
+          .update({'vaccess': _selectedVaccess})
+          .eq('pcid', widget.patient['pcid']);
+
+      setState(() {
+        _currentVaccess = _selectedVaccess;
+        widget.patient['vaccess'] = _selectedVaccess;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Vascular access updated to $_selectedVaccess'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving vascular access: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingVaccess = false);
+    }
   }
 
   Future<void> _fetchUploadedImages() async {
@@ -286,6 +340,108 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
       ),
       body: Column(
         children: [
+          // Vascular Access Type Section
+          Card(
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.purple.shade100),
+            ),
+            color: Colors.purple.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.bloodtype, color: Colors.purple.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Current Vascular Access',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.purple.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedVaccess,
+                          decoration: InputDecoration(
+                            labelText: 'Access Type',
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                          ),
+                          items: _vaccessOptions
+                              .map(
+                                (v) =>
+                                    DropdownMenuItem(value: v, child: Text(v)),
+                              )
+                              .toList(),
+                          onChanged: (val) =>
+                              setState(() => _selectedVaccess = val),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton.icon(
+                        onPressed:
+                            (_isSavingVaccess ||
+                                _selectedVaccess == null ||
+                                _selectedVaccess == _currentVaccess)
+                            ? null
+                            : _saveVaccess,
+                        icon: _isSavingVaccess
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.save),
+                        label: Text(_isSavingVaccess ? 'Saving...' : 'Save'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_currentVaccess != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Current: $_currentVaccess',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.purple.shade600,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
           // Upload Section
           Card(
             margin: const EdgeInsets.all(16),
