@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../common/patient_list_screen.dart';
 
 class NurseAssignmentScreen extends StatefulWidget {
-  const NurseAssignmentScreen({super.key});
+  final bool isAdmin;
+
+  const NurseAssignmentScreen({super.key, this.isAdmin = true});
 
   @override
   State<NurseAssignmentScreen> createState() => _NurseAssignmentScreenState();
@@ -11,14 +14,17 @@ class NurseAssignmentScreen extends StatefulWidget {
 class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
-  List<Map<String, dynamic>> _groups = [];
   List<Map<String, dynamic>> _nurses = [];
-  final Map<String, int?> _assignments =
-      {}; // Key: "hall-shift-day", Value: staffid
-  final Map<String, int?> _originalAssignments =
-      {}; // Original values from database
-  // Grouped data structure: Key = Hall Name, Value = List of group objects
-  Map<String, List<Map<String, dynamic>>> _groupedGroups = {};
+  Map<int, List<Map<String, dynamic>>> _nurseAssignments =
+      {}; // staffid -> list of assignments
+  Map<int, int> _patientCounts = {}; // staffid -> patient count
+  List<Map<String, dynamic>> _availableSlots =
+      []; // All hall/day/shift combinations
+  int _unassignedPatientCount =
+      0; // Count of patients not assigned to any nurse
+  int _patientsWithNurseOnLeaveCount =
+      0; // Count of patients whose nurse is on leave
+  Set<int> _nursesOnLeaveIds = {}; // Set of nurse IDs currently on leave
 
   @override
   void initState() {
@@ -31,40 +37,84 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
     try {
       final client = Supabase.instance.client;
 
-      // 1. Fetch Groups
-      final groupsResponse = await client
-          .from('groupsofpatients')
-          .select()
-          .eq('ismain', true) // Filter by ismain = true
-          .order('ghall')
-          .order('gday')
-          .order('gshift');
-
-      // 2. Fetch Nurses (Staff)
-      final staffResponse = await client
+      // 1. Fetch all nurses (including leave status)
+      final nursesResponse = await client
           .from('staff')
-          .select('medicalstaffid, name, staffrole')
-          .eq('staffrole', 'Nurse') // Assuming we only assign nurses
+          .select('medicalstaffid, name, staffrole, is_on_leave')
+          .eq('staffrole', 'Nurse')
           .order('name');
 
-      setState(() {
-        _groups = List<Map<String, dynamic>>.from(groupsResponse);
-        _nurses = List<Map<String, dynamic>>.from(staffResponse);
+      // 2. Fetch all assignments (ismain = true)
+      final assignmentsResponse = await client
+          .from('groupsofpatients')
+          .select()
+          .eq('ismain', true);
 
-        // Group by Hall
-        _groupedGroups = {};
-        for (var group in _groups) {
-          final hall = group['ghall'] as String;
-          if (!_groupedGroups.containsKey(hall)) {
-            _groupedGroups[hall] = [];
-          }
-          _groupedGroups[hall]!.add(group);
+      // 3. Fetch patient counts per nurse
+      final patientCountsResponse = await client
+          .from('patients')
+          .select('nstaffid')
+          .eq('status', 'Active');
 
-          // Initialize assignments
-          final key = _makeKey(group);
-          _assignments[key] = group['staffid'];
-          _originalAssignments[key] = group['staffid'];
+      // 4. Fetch available hall/day/shift combinations from config
+      final slotsResponse = await client
+          .from('hall_schedule_config')
+          .select('hallname, day_name, shift_name')
+          .eq('is_active', true)
+          .order('hallname')
+          .order('day_name')
+          .order('shift_name');
+
+      // Process data
+      final nurses = List<Map<String, dynamic>>.from(nursesResponse);
+      final assignments = List<Map<String, dynamic>>.from(assignmentsResponse);
+      final patientList = List<Map<String, dynamic>>.from(
+        patientCountsResponse,
+      );
+      final slots = List<Map<String, dynamic>>.from(slotsResponse);
+
+      // Group assignments by nurse
+      final nurseAssignments = <int, List<Map<String, dynamic>>>{};
+      for (var nurse in nurses) {
+        final staffId = nurse['medicalstaffid'] as int;
+        nurseAssignments[staffId] = assignments
+            .where((a) => a['staffid'] == staffId)
+            .toList();
+      }
+
+      // Build set of nurses on leave
+      final nursesOnLeave = <int>{};
+      for (var nurse in nurses) {
+        if (nurse['is_on_leave'] == true) {
+          nursesOnLeave.add(nurse['medicalstaffid'] as int);
         }
+      }
+
+      // Count patients per nurse, unassigned patients, and patients with nurse on leave
+      final patientCounts = <int, int>{};
+      int unassignedCount = 0;
+      int nurseOnLeaveCount = 0;
+      for (var patient in patientList) {
+        final staffId = patient['nstaffid'];
+        if (staffId != null) {
+          patientCounts[staffId] = (patientCounts[staffId] ?? 0) + 1;
+          // Check if this patient's nurse is on leave
+          if (nursesOnLeave.contains(staffId)) {
+            nurseOnLeaveCount++;
+          }
+        } else {
+          unassignedCount++;
+        }
+      }
+
+      setState(() {
+        _nurses = nurses;
+        _nurseAssignments = nurseAssignments;
+        _patientCounts = patientCounts;
+        _availableSlots = slots;
+        _unassignedPatientCount = unassignedCount;
+        _patientsWithNurseOnLeaveCount = nurseOnLeaveCount;
+        _nursesOnLeaveIds = nursesOnLeave;
         _isLoading = false;
       });
     } catch (e) {
@@ -80,79 +130,39 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
     }
   }
 
-  String _makeKey(Map<String, dynamic> group) {
-    return '${group['ghall']}-${group['gshift']}-${group['gday']}';
-  }
-
-  bool get _hasUnsavedChanges {
-    for (var key in _assignments.keys) {
-      if (_assignments[key] != _originalAssignments[key]) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  void _updateLocalAssignment(Map<String, dynamic> group, int? staffId) {
-    final key = _makeKey(group);
-    setState(() {
-      _assignments[key] = staffId;
-    });
-  }
-
-  Future<void> _saveAllAssignments() async {
-    // Find changed assignments
-    final changedKeys = _assignments.keys
-        .where((key) => _assignments[key] != _originalAssignments[key])
-        .toList();
-
-    if (changedKeys.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No changes to save'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
+  Future<void> _addAssignment(
+    int staffId,
+    String hall,
+    String day,
+    String shift,
+  ) async {
     setState(() => _isSaving = true);
-
     try {
-      final client = Supabase.instance.client;
+      // Update the groupsofpatients table
+      await Supabase.instance.client
+          .from('groupsofpatients')
+          .update({'staffid': staffId, 'ismain': true})
+          .match({'ghall': hall, 'gshift': shift, 'gday': day});
 
-      // Update each changed group
-      for (var key in changedKeys) {
-        final parts = key.split('-');
-        final hall = parts[0];
-        final shift = parts[1];
-        final day = parts[2];
+      // Sync patient assignments
+      await Supabase.instance.client.rpc('sync_all_patients_staffid');
 
-        await client
-            .from('groupsofpatients')
-            .update({'staffid': _assignments[key]})
-            .match({'ghall': hall, 'gshift': shift, 'gday': day});
-
-        // Update original to match current
-        _originalAssignments[key] = _assignments[key];
-      }
+      // Refresh data
+      await _fetchData();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Saved ${changedKeys.length} assignment(s) successfully!',
-            ),
+            content: Text('Added $hall - $day - $shift'),
             backgroundColor: Colors.green,
           ),
         );
-        setState(() {}); // Refresh UI to update button state
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to save assignments: $e'),
+            content: Text('Error adding assignment: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -162,210 +172,768 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
     }
   }
 
+  Future<void> _removeAssignment(
+    int staffId,
+    String hall,
+    String day,
+    String shift,
+  ) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Assignment'),
+        content: Text('Remove $hall - $day - $shift from this nurse?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isSaving = true);
+    try {
+      // Remove staffid from the groupsofpatients table
+      await Supabase.instance.client
+          .from('groupsofpatients')
+          .update({'staffid': null, 'ismain': null})
+          .match({'ghall': hall, 'gshift': shift, 'gday': day});
+
+      // Sync patient assignments
+      await Supabase.instance.client.rpc('sync_all_patients_staffid');
+
+      // Refresh data
+      await _fetchData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Removed $hall - $day - $shift'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error removing assignment: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _toggleNurseLeave(
+    int staffId,
+    String nurseName,
+    bool currentlyOnLeave,
+  ) async {
+    final newStatus = !currentlyOnLeave;
+    final action = newStatus ? 'mark as on leave' : 'mark as returned';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(newStatus ? 'Mark Nurse On Leave' : 'Mark Nurse Returned'),
+        content: Text('Are you sure you want to $action for $nurseName?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: newStatus ? Colors.orange : Colors.green,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(newStatus ? 'Mark On Leave' : 'Mark Returned'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isSaving = true);
+    try {
+      await Supabase.instance.client
+          .from('staff')
+          .update({'is_on_leave': newStatus})
+          .eq('medicalstaffid', staffId);
+
+      await _fetchData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newStatus
+                  ? '$nurseName marked as on leave'
+                  : '$nurseName marked as returned',
+            ),
+            backgroundColor: newStatus ? Colors.orange : Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating leave status: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  void _showAddAssignmentDialog(int staffId, String nurseName) {
+    // Get currently assigned slots for this nurse
+    final currentAssignments = _nurseAssignments[staffId] ?? [];
+    final assignedKeys = currentAssignments
+        .map((a) => '${a['ghall']}-${a['gday']}-${a['gshift']}')
+        .toSet();
+
+    // Filter available slots (not already assigned to this nurse)
+    final availableForNurse = _availableSlots.where((slot) {
+      final key =
+          '${slot['hallname']}-${slot['day_name']}-${slot['shift_name']}';
+      return !assignedKeys.contains(key);
+    }).toList();
+
+    if (availableForNurse.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No available slots to assign'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    String? selectedHall;
+    String? selectedDay;
+    String? selectedShift;
+
+    // Get unique halls, days, shifts
+    final halls =
+        availableForNurse.map((s) => s['hallname'] as String).toSet().toList()
+          ..sort();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          // Filter days based on selected hall
+          final daysForHall = selectedHall != null
+              ? availableForNurse
+                    .where((s) => s['hallname'] == selectedHall)
+                    .map((s) => s['day_name'] as String)
+                    .toSet()
+                    .toList()
+              : <String>[];
+          daysForHall.sort((a, b) => _dayOrder(a).compareTo(_dayOrder(b)));
+
+          // Filter shifts based on selected hall and day
+          final shiftsForHallDay = (selectedHall != null && selectedDay != null)
+              ? availableForNurse
+                    .where(
+                      (s) =>
+                          s['hallname'] == selectedHall &&
+                          s['day_name'] == selectedDay,
+                    )
+                    .map((s) => s['shift_name'] as String)
+                    .toSet()
+                    .toList()
+              : <String>[];
+          shiftsForHallDay.sort(
+            (a, b) => _shiftOrder(a).compareTo(_shiftOrder(b)),
+          );
+
+          return AlertDialog(
+            title: Text('Add Assignment for $nurseName'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: selectedHall,
+                  decoration: const InputDecoration(
+                    labelText: 'Hall',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: halls
+                      .map((h) => DropdownMenuItem(value: h, child: Text(h)))
+                      .toList(),
+                  onChanged: (val) {
+                    setDialogState(() {
+                      selectedHall = val;
+                      selectedDay = null;
+                      selectedShift = null;
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedDay,
+                  decoration: const InputDecoration(
+                    labelText: 'Day',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: daysForHall
+                      .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                      .toList(),
+                  onChanged: selectedHall == null
+                      ? null
+                      : (val) {
+                          setDialogState(() {
+                            selectedDay = val;
+                            selectedShift = null;
+                          });
+                        },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedShift,
+                  decoration: const InputDecoration(
+                    labelText: 'Shift',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: shiftsForHallDay
+                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                      .toList(),
+                  onChanged: selectedDay == null
+                      ? null
+                      : (val) {
+                          setDialogState(() {
+                            selectedShift = val;
+                          });
+                        },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed:
+                    (selectedHall != null &&
+                        selectedDay != null &&
+                        selectedShift != null)
+                    ? () {
+                        Navigator.pop(ctx);
+                        _addAssignment(
+                          staffId,
+                          selectedHall!,
+                          selectedDay!,
+                          selectedShift!,
+                        );
+                      }
+                    : null,
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  int _dayOrder(String day) {
+    const order = {
+      'Saturday': 1,
+      'Sunday': 2,
+      'Monday': 3,
+      'Tuesday': 4,
+      'Wednesday': 5,
+      'Thursday': 6,
+    };
+    return order[day] ?? 99;
+  }
+
+  int _shiftOrder(String shift) {
+    const order = {'AM': 1, 'PM': 2, 'LPM': 3, 'NIGHT': 4};
+    return order[shift] ?? 99;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final halls = _groupedGroups.keys.toList();
-
-    // Custom expansion state tracking
-    // We use a local key for the ExpansionPanelList to force rebuilds when data changes effectively
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nurse Assignment'),
+        title: const Text('Nurse Assignments'),
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: FilledButton.icon(
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.save, size: 20),
-              label: Text(_isSaving ? 'Saving...' : 'Save'),
-              style: FilledButton.styleFrom(
-                backgroundColor: _hasUnsavedChanges
-                    ? Colors.red
-                    : const Color.fromARGB(255, 6, 107, 95),
-                foregroundColor: Colors.white,
-              ),
-              onPressed: _isSaving ? null : _saveAllAssignments,
-            ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _isLoading ? null : _fetchData,
+            tooltip: 'Refresh',
           ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _groupedGroups.isEmpty
-          ? const Center(child: Text('No groups found'))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: _ExpansionListWrapper(
-                halls: halls,
-                groupedGroups: _groupedGroups,
-                nurses: _nurses,
-                assignments: _assignments,
-                onAssignmentChanged: _updateLocalAssignment,
-              ),
+          : _nurses.isEmpty
+          ? const Center(child: Text('No nurses found'))
+          : Column(
+              children: [
+                Expanded(
+                  child: Stack(
+                    children: [
+                      ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _nurses.length,
+                        itemBuilder: (context, index) {
+                          final nurse = _nurses[index];
+                          final staffId = nurse['medicalstaffid'] as int;
+                          final nurseName = nurse['name'] as String;
+                          final assignments = _nurseAssignments[staffId] ?? [];
+                          final patientCount = _patientCounts[staffId] ?? 0;
+                          final isOnLeave = nurse['is_on_leave'] == true;
+
+                          return _buildNurseCard(
+                            staffId: staffId,
+                            nurseName: nurseName,
+                            assignments: assignments,
+                            patientCount: patientCount,
+                            isOnLeave: isOnLeave,
+                          );
+                        },
+                      ),
+                      if (_isSaving)
+                        Container(
+                          color: Colors.black26,
+                          child: const Center(
+                            child: Card(
+                              child: Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 16),
+                                    Text('Saving...'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                // Bottom bar showing patient status counts
+                SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Unassigned patients row
+                      if (_unassignedPatientCount > 0)
+                        InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => PatientListScreen(
+                                  filterMode: PatientFilterMode.unassigned,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 10,
+                              horizontal: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade100,
+                              border: Border(
+                                top: BorderSide(color: Colors.grey.shade300),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.orange.shade800,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    '$_unassignedPatientCount patient(s) not assigned to any nurse',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.orange.shade900,
+                                    ),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 14,
+                                  color: Colors.orange.shade700,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      // Patients with nurse on leave row
+                      if (_patientsWithNurseOnLeaveCount > 0)
+                        InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => PatientListScreen(
+                                  filterMode: PatientFilterMode.nurseOnLeave,
+                                  nurseOnLeaveIds: _nursesOnLeaveIds.toList(),
+                                ),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 10,
+                              horizontal: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade100,
+                              border: Border(
+                                top: BorderSide(color: Colors.grey.shade300),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.person_off,
+                                  color: Colors.purple.shade800,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    '$_patientsWithNurseOnLeaveCount patient(s) whose nurse is on leave',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.purple.shade900,
+                                    ),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 14,
+                                  color: Colors.purple.shade700,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      // All good message when no issues
+                      if (_unassignedPatientCount == 0 &&
+                          _patientsWithNurseOnLeaveCount == 0)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                            horizontal: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade100,
+                            border: Border(
+                              top: BorderSide(color: Colors.grey.shade300),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.check_circle,
+                                color: Colors.green.shade800,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'All patients are covered',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green.shade900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
     );
   }
-}
 
-class _ExpansionListWrapper extends StatefulWidget {
-  final List<String> halls;
-  final Map<String, List<Map<String, dynamic>>> groupedGroups;
-  final List<Map<String, dynamic>> nurses;
-  final Map<String, int?> assignments;
-  final Function(Map<String, dynamic>, int?) onAssignmentChanged;
-
-  const _ExpansionListWrapper({
-    required this.halls,
-    required this.groupedGroups,
-    required this.nurses,
-    required this.assignments,
-    required this.onAssignmentChanged,
-  });
-
-  @override
-  State<_ExpansionListWrapper> createState() => _ExpansionListWrapperState();
-}
-
-class _ExpansionListWrapperState extends State<_ExpansionListWrapper> {
-  // Track which panel is expanded by index. -1 means none.
-  // Using a separate stateful widget to manage the expansion state easily
-  // while keeping the parent fetching logic clean.
-  int? _expandedIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    return ExpansionPanelList(
-      elevation: 1,
-      expandedHeaderPadding: const EdgeInsets.symmetric(vertical: 8),
-      expansionCallback: (int index, bool isExpanded) {
-        setState(() {
-          // Toggle: if currently expanded (index matches), close it (null).
-          // Otherwise, open the clicked one (index).
-          _expandedIndex = (_expandedIndex == index) ? null : index;
-        });
-      },
-      children: widget.halls.asMap().entries.map<ExpansionPanel>((entry) {
-        final index = entry.key;
-        final hallName = entry.value;
-        final groups = widget.groupedGroups[hallName]!;
-        final isExpanded = _expandedIndex == index;
-
-        return ExpansionPanel(
-          headerBuilder: (BuildContext context, bool isExpanded) {
-            return ListTile(
-              leading: Icon(
-                Icons.meeting_room,
-                color: isExpanded ? Colors.teal : Colors.grey,
-              ),
-              title: Text(
-                'Hall: $hallName',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: isExpanded ? Colors.teal.shade900 : Colors.black87,
+  Widget _buildNurseCard({
+    required int staffId,
+    required String nurseName,
+    required List<Map<String, dynamic>> assignments,
+    required int patientCount,
+    required bool isOnLeave,
+  }) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Opacity(
+        opacity: isOnLeave ? 0.7 : 1.0,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with nurse name
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isOnLeave ? Colors.orange.shade50 : Colors.teal.shade50,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(12),
                 ),
               ),
-            );
-          },
-          body: Column(
-            children: groups.map((group) {
-              final key =
-                  '${group['ghall']}-${group['gshift']}-${group['gday']}'; // Re-gen key locally or pass function
-              final currentStaffId = widget.assignments[key];
-
-              return Container(
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: Colors.grey.shade200)),
-                  color: Colors.grey.shade50,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    // Shift/Day Info
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            group['gday'] ?? '',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
+              child: Row(
+                children: [
+                  Stack(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: isOnLeave
+                            ? Colors.orange.shade700
+                            : Colors.teal.shade700,
+                        child: Text(
+                          nurseName.isNotEmpty
+                              ? nurseName[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
                           ),
-                          Text(
-                            group['gshift'] ?? '',
-                            style: TextStyle(
-                              color: Colors.grey.shade700,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Dropdown
-                    Expanded(
-                      flex: 3,
-                      child: DropdownButtonFormField<int>(
-                        value: currentStaffId,
-                        decoration: InputDecoration(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 0,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          isDense: true,
-                          fillColor: Colors.white,
-                          filled: true,
                         ),
-                        items: [
-                          const DropdownMenuItem<int>(
-                            value: null,
-                            child: Text(
-                              'Unassigned',
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 13,
+                      ),
+                      if (isOnLeave)
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 1.5,
                               ),
                             ),
+                            child: const Icon(
+                              Icons.beach_access,
+                              size: 10,
+                              color: Colors.white,
+                            ),
                           ),
-                          ...widget.nurses.map((nurse) {
-                            return DropdownMenuItem<int>(
-                              value: nurse['medicalstaffid'],
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
                               child: Text(
-                                nurse['name'],
-                                style: const TextStyle(fontSize: 14),
+                                nurseName,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: isOnLeave
+                                      ? Colors.orange.shade900
+                                      : Colors.teal.shade900,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
-                            );
-                          }).toList(),
-                        ],
-                        onChanged: (newId) {
-                          widget.onAssignmentChanged(group, newId);
-                        },
-                      ),
+                            ),
+                            if (isOnLeave)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade200,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  'On Leave',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange.shade900,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        Text(
+                          '${assignments.length} assignment(s)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isOnLeave
+                                ? Colors.orange.shade600
+                                : Colors.teal.shade600,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                  // Leave toggle button
+                  IconButton(
+                    icon: Icon(
+                      isOnLeave ? Icons.work : Icons.beach_access,
+                      color: widget.isAdmin
+                          ? (isOnLeave ? Colors.green : Colors.orange)
+                          : Colors.grey,
+                    ),
+                    tooltip: widget.isAdmin
+                        ? (isOnLeave ? 'Mark as Returned' : 'Mark as On Leave')
+                        : 'Admin only',
+                    onPressed: widget.isAdmin
+                        ? () => _toggleNurseLeave(staffId, nurseName, isOnLeave)
+                        : null,
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.add_circle,
+                      color: (!widget.isAdmin || isOnLeave)
+                          ? Colors.grey
+                          : Colors.teal,
+                    ),
+                    tooltip: widget.isAdmin ? 'Add Assignment' : 'Admin only',
+                    onPressed: (!widget.isAdmin || isOnLeave)
+                        ? null
+                        : () => _showAddAssignmentDialog(staffId, nurseName),
+                  ),
+                ],
+              ),
+            ),
+
+            // Assignments list
+            if (assignments.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'No assignments yet',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
-              );
-            }).toList(),
-          ),
-          isExpanded: isExpanded,
-          canTapOnHeader: true,
-        );
-      }).toList(),
+              )
+            else
+              ...assignments.map((assignment) {
+                final hall = assignment['ghall'] ?? '';
+                final day = assignment['gday'] ?? '';
+                final shift = assignment['gshift'] ?? '';
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: Colors.grey.shade200),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.meeting_room,
+                        size: 18,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$hall  •  $day  •  $shift',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.remove_circle_outline,
+                          color: widget.isAdmin
+                              ? Colors.red.shade400
+                              : Colors.grey,
+                          size: 22,
+                        ),
+                        tooltip: widget.isAdmin ? 'Remove' : 'Admin only',
+                        onPressed: widget.isAdmin
+                            ? () => _removeAssignment(staffId, hall, day, shift)
+                            : null,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+
+            // Footer with patient count
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(12),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.people, size: 18, color: Colors.blue.shade700),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$patientCount patients assigned',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue.shade900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

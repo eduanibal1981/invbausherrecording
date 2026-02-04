@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'nurse_assignment_screen.dart';
 
 class NursePatientSummaryScreen extends StatefulWidget {
   const NursePatientSummaryScreen({super.key});
@@ -14,10 +16,27 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
   String? _selectedHall; // null means 'All'
   List<String> _availableHalls = [];
 
+  // Achievement target (default 20, loaded from SharedPreferences)
+  static const String _achievementTargetKey = 'achievement_target';
+  int _achievementTarget = 20;
+
   @override
   void initState() {
     super.initState();
-    _summaryFuture = _fetchSummary();
+    _loadSettingsAndFetchData();
+  }
+
+  Future<void> _loadSettingsAndFetchData() async {
+    // Load achievement target
+    final prefs = await SharedPreferences.getInstance();
+    final savedTarget = prefs.getInt(_achievementTargetKey);
+    if (savedTarget != null && savedTarget > 0) {
+      setState(() => _achievementTarget = savedTarget);
+    }
+    // Fetch summary data
+    setState(() {
+      _summaryFuture = _fetchSummary();
+    });
   }
 
   Future<List<Map<String, dynamic>>> _fetchSummary() async {
@@ -75,6 +94,30 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
         title: const Text('Nurse Patient Summary'),
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.assignment_ind),
+            tooltip: 'View Nurse Assignments',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      const NurseAssignmentScreen(isAdmin: false),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+            onPressed: () {
+              setState(() {
+                _summaryFuture = _fetchSummary();
+              });
+            },
+          ),
+        ],
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _summaryFuture,
@@ -197,7 +240,7 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                           ),
                           DataColumn(
                             label: Text(
-                              'Percentage',
+                              'Achievement',
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                             numeric: true,
@@ -254,7 +297,8 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                               ),
                               DataCell(
                                 _buildPercentageCell(
-                                  row['bw_percentage'],
+                                  row['bw_entered_this_month'],
+                                  row['total_patients'],
                                   textStyle,
                                   isTotal,
                                 ),
@@ -273,10 +317,11 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                                 ),
                               ),
                               DataCell(
-                                Text(
-                                  row['bw_entered_this_month']?.toString() ??
-                                      '0',
-                                  style: textStyle,
+                                _buildBwEnteredCell(
+                                  row['bw_entered_this_month'],
+                                  row['total_patients'],
+                                  textStyle,
+                                  isTotal,
                                 ),
                               ),
                             ],
@@ -294,21 +339,52 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
     );
   }
 
-  Widget _buildPercentageCell(dynamic value, TextStyle style, bool isTotal) {
-    if (value == null) return Text('-', style: style);
+  Widget _buildPercentageCell(
+    dynamic bwEntered,
+    dynamic totalPatients,
+    TextStyle style,
+    bool isTotal,
+  ) {
+    final int enteredCount = int.tryParse(bwEntered?.toString() ?? '0') ?? 0;
+    final int totalCount = int.tryParse(totalPatients?.toString() ?? '0') ?? 0;
 
-    final double? pct = double.tryParse(value.toString());
-    if (pct == null) return Text(value.toString(), style: style);
+    // For TOTAL row: use actual total patients
+    // For individual nurses: use achievement target
+    final double pct;
+    if (isTotal) {
+      // TOTAL row: actual percentage of BW entered vs total patients
+      pct = totalCount > 0 ? (enteredCount / totalCount) * 100 : 0;
+    } else {
+      // Individual nurses: percentage based on achievement target
+      pct = _achievementTarget > 0
+          ? (enteredCount / _achievementTarget) * 100
+          : 0;
+    }
 
-    // Color coding for percentage
+    // Color coding for percentage (supports >100%)
     Color textColor = style.color ?? Colors.black;
+    Color bgColor = Colors.grey.shade100;
+    IconData? icon;
+
     if (!isTotal) {
-      if (pct >= 80)
-        textColor = Colors.green.shade700;
-      else if (pct >= 50)
-        textColor = Colors.orange.shade800;
-      else
-        textColor = Colors.red.shade700;
+      if (pct >= 100) {
+        textColor = Colors.purple.shade700; // Exceptional - over 100%
+        bgColor = Colors.purple.shade50;
+        icon = Icons.star;
+      } else if (pct >= 80) {
+        textColor = Colors.green.shade700; // Excellent
+        bgColor = Colors.green.shade50;
+        icon = Icons.check_circle;
+      } else if (pct >= 50) {
+        textColor = Colors.orange.shade800; // Good
+        bgColor = Colors.orange.shade50;
+      } else if (pct > 0) {
+        textColor = Colors.blue.shade700; // In progress
+        bgColor = Colors.blue.shade50;
+      } else {
+        textColor = Colors.red.shade700; // Not started
+        bgColor = Colors.red.shade50;
+      }
     }
 
     return Container(
@@ -316,15 +392,46 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
       decoration: isTotal
           ? null
           : BoxDecoration(
-              color: textColor.withOpacity(0.1),
+              color: bgColor,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: textColor.withOpacity(0.3)),
             ),
-      child: Text(
-        '${pct.toStringAsFixed(1)}%',
-        style: style.copyWith(
-          color: isTotal ? null : textColor,
-          fontWeight: isTotal ? null : FontWeight.bold,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!isTotal && icon != null) Icon(icon, size: 14, color: textColor),
+          if (!isTotal && icon != null) const SizedBox(width: 4),
+          Text(
+            '${pct.toStringAsFixed(1)}%',
+            style: style.copyWith(
+              color: isTotal ? null : textColor,
+              fontWeight: isTotal ? null : FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBwEnteredCell(
+    dynamic entered,
+    dynamic total,
+    TextStyle style,
+    bool isTotal,
+  ) {
+    final int enteredCount = int.tryParse(entered?.toString() ?? '0') ?? 0;
+    final int totalCount = int.tryParse(total?.toString() ?? '0') ?? 0;
+
+    // For TOTAL row: show entered / total patients
+    // For individual nurses: show entered / achievement target
+    final String displayText = isTotal
+        ? '$enteredCount / $totalCount'
+        : '$enteredCount / $_achievementTarget';
+
+    return Text(
+      displayText,
+      style: style.copyWith(
+        color: enteredCount > 0 ? Colors.green.shade700 : null,
       ),
     );
   }
@@ -348,7 +455,7 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
         );
       },
       child: const Text(
-        'Assigned',
+        'View',
         style: TextStyle(
           color: Colors.blue,
           decoration: TextDecoration.underline,

@@ -7,8 +7,22 @@ import '../admin/administration_screen.dart';
 import '../admin/nurse_patient_summary_screen.dart';
 import 'about_screen.dart';
 
+/// Filter mode for patient list when navigating from other screens
+enum PatientFilterMode {
+  none, // Normal view - no special filter
+  unassigned, // Show only patients with no nurse assigned
+  nurseOnLeave, // Show only patients whose nurse is on leave
+}
+
 class PatientListScreen extends StatefulWidget {
-  const PatientListScreen({super.key});
+  final PatientFilterMode filterMode;
+  final List<int>? nurseOnLeaveIds;
+
+  const PatientListScreen({
+    super.key,
+    this.filterMode = PatientFilterMode.none,
+    this.nurseOnLeaveIds,
+  });
 
   @override
   State<PatientListScreen> createState() => _PatientListScreenState();
@@ -30,11 +44,27 @@ class _PatientListScreenState extends State<PatientListScreen> {
   // Future for patients data
   late Future<List<Map<String, dynamic>>> _patientsFuture;
 
+  // Bloodweek status with entered_by info (pcid -> entered_by_name)
+  Map<int, String?> _bwEnteredBy = {};
+
   @override
   void initState() {
     super.initState();
     _fetchStaffDetails();
+    _syncStaffAssignmentsInBackground(); // Silent sync on load
     _patientsFuture = _fetchPatients();
+  }
+
+  /// Silently syncs nurse-patient assignments in the background
+  /// This ensures patients have the correct nurse assigned based on their schedule
+  Future<void> _syncStaffAssignmentsInBackground() async {
+    try {
+      await Supabase.instance.client.rpc('sync_all_patients_staffid');
+      debugPrint('Staff assignments synced successfully');
+    } catch (e) {
+      debugPrint('Background staff sync error: $e');
+      // Silently fail - don't interrupt user experience
+    }
   }
 
   Future<void> _fetchStaffDetails() async {
@@ -50,8 +80,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
       if (mounted) {
         setState(() {
           _currentStaff = data;
-          // Default 'My Patients' to true if the role is Nurse
-          if (data != null && data['staffrole'] == 'Nurse') {
+          // Default 'My Patients' to true if the role is Nurse AND no special filter is active
+          if (widget.filterMode == PatientFilterMode.none &&
+              data != null &&
+              data['staffrole'] == 'Nurse') {
             _showMyPatientsOnly = true;
           }
         });
@@ -68,9 +100,30 @@ class _PatientListScreenState extends State<PatientListScreen> {
           .from('patients')
           .select()
           .eq('status', 'Active');
+
+      // Fetch bloodweek status with entered_by_name
+      await _fetchBwStatus();
+
       return List<Map<String, dynamic>>.from(response as List);
     } catch (e) {
       throw Exception('Failed to load patients : $e');
+    }
+  }
+
+  /// Fetches bloodweek entry status with who entered it
+  Future<void> _fetchBwStatus() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('vw_patients_bw_status')
+          .select('pcid, entered_by_name');
+
+      final list = List<Map<String, dynamic>>.from(response);
+      _bwEnteredBy = {
+        for (var item in list)
+          item['pcid'] as int: item['entered_by_name'] as String?,
+      };
+    } catch (e) {
+      debugPrint('Error fetching BW status: $e');
     }
   }
 
@@ -193,14 +246,32 @@ class _PatientListScreenState extends State<PatientListScreen> {
 
     // Single iteration with combined conditions
     return allPatients.where((patient) {
+      // 0. Special Filter Mode (from navigation)
+      if (widget.filterMode == PatientFilterMode.unassigned) {
+        // Only show patients with no nurse assigned
+        if (patient['nstaffid'] != null) {
+          return false;
+        }
+      } else if (widget.filterMode == PatientFilterMode.nurseOnLeave) {
+        // Only show patients whose nurse is on leave
+        final nurseId = patient['nstaffid'];
+        if (nurseId == null ||
+            widget.nurseOnLeaveIds == null ||
+            !widget.nurseOnLeaveIds!.contains(nurseId)) {
+          return false;
+        }
+      }
+
       // 1. Schedule Filters
       if (_filteredPcids != null &&
           !_filteredPcids!.contains(patient['pcid'])) {
         return false;
       }
 
-      // 2. My Patients Filter
-      if (_showMyPatientsOnly && _currentStaff != null) {
+      // 2. My Patients Filter (Skip if special filter mode is active)
+      if (widget.filterMode == PatientFilterMode.none &&
+          _showMyPatientsOnly &&
+          _currentStaff != null) {
         if (patient['dstaffid'] != staffId && patient['nstaffid'] != staffId) {
           return false;
         }
@@ -264,14 +335,22 @@ class _PatientListScreenState extends State<PatientListScreen> {
     }).toList();
   }
 
+  String _getAppBarTitle() {
+    if (widget.filterMode == PatientFilterMode.unassigned) {
+      return 'Unassigned Patients';
+    } else if (widget.filterMode == PatientFilterMode.nurseOnLeave) {
+      return 'Patients (Nurse On Leave)';
+    } else if (_currentStaff != null) {
+      return 'Hi ${_currentStaff!['name']}';
+    }
+    return 'Patients';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _currentStaff != null ? 'Hi ${_currentStaff!['name']}' : 'Patients',
-          style: const TextStyle(fontSize: 16),
-        ),
+        title: Text(_getAppBarTitle(), style: const TextStyle(fontSize: 16)),
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
         actions: [
@@ -572,26 +651,62 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                       trailing: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          // BW Collected Indicator
-                                          Tooltip(
-                                            message:
-                                                'Last BW: ${patient['lastbwcollected'] ?? 'N/A'}',
-                                            child: Container(
-                                              width: 22,
-                                              height: 22,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color:
-                                                    (patient['lastbwcollected'] ==
-                                                        DateFormat(
-                                                          'MMMM',
-                                                        ).format(
-                                                          DateTime.now(),
-                                                        ))
-                                                    ? Colors.green
-                                                    : Colors.red.shade200,
-                                              ),
-                                            ),
+                                          // BW Collected Indicator with entered_by info
+                                          Builder(
+                                            builder: (context) {
+                                              final pcid =
+                                                  patient['pcid'] as int;
+                                              final lastBw =
+                                                  patient['lastbwcollected'];
+                                              final currentMonth = DateFormat(
+                                                'MMMM',
+                                              ).format(DateTime.now());
+                                              final isRecorded =
+                                                  lastBw == currentMonth;
+                                              final enteredBy =
+                                                  _bwEnteredBy[pcid];
+
+                                              String tooltipMsg =
+                                                  'Last BW: ${lastBw ?? 'N/A'}';
+                                              if (isRecorded &&
+                                                  enteredBy != null) {
+                                                tooltipMsg +=
+                                                    '\nEntered by: $enteredBy';
+                                              }
+
+                                              return Tooltip(
+                                                message: tooltipMsg,
+                                                child: Container(
+                                                  width: 22,
+                                                  height: 22,
+                                                  decoration: BoxDecoration(
+                                                    shape: BoxShape.circle,
+                                                    color: isRecorded
+                                                        ? Colors.green
+                                                        : Colors.red.shade200,
+                                                  ),
+                                                  child:
+                                                      isRecorded &&
+                                                          enteredBy != null
+                                                      ? Center(
+                                                          child: Text(
+                                                            enteredBy[0]
+                                                                .toUpperCase(),
+                                                            style:
+                                                                const TextStyle(
+                                                                  color: Colors
+                                                                      .white,
+                                                                  fontSize: 10,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                ),
+                                                          ),
+                                                        )
+                                                      : null,
+                                                ),
+                                              );
+                                            },
                                           ),
                                           const SizedBox(width: 8),
                                           // Doctor Reviewed Indicator

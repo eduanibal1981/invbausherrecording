@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'nurse_patient_summary_screen.dart';
 import 'nurse_assignment_screen.dart';
+import 'main_schedule_config_screen.dart';
 
 class AdministrationScreen extends StatefulWidget {
   const AdministrationScreen({super.key});
@@ -16,8 +18,73 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
   bool _isSyncing = false;
   String _currentSyncStep = '';
 
+  // Achievement target setting (default 20)
+  static const String _achievementTargetKey = 'achievement_target';
+  int _achievementTarget = 20;
+  bool _isSavingTarget = false;
+  final TextEditingController _targetController = TextEditingController();
+
   final String _googleSheetsUrl =
       'https://script.google.com/macros/s/AKfycbxnqQxdSxcAJbzLt07jWPrhKNAEwELl8qoMC07c7xfCMHqLbruxj7NHlaiVN09bACbWLg/exec?type=patients';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAchievementTarget();
+  }
+
+  @override
+  void dispose() {
+    _targetController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAchievementTarget() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedTarget = prefs.getInt(_achievementTargetKey) ?? 20;
+    setState(() {
+      _achievementTarget = savedTarget;
+      _targetController.text = savedTarget.toString();
+    });
+  }
+
+  Future<void> _saveAchievementTarget(int newTarget) async {
+    if (newTarget < 1 || newTarget > 100) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Target must be between 1 and 100'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSavingTarget = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_achievementTargetKey, newTarget);
+      setState(() => _achievementTarget = newTarget);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Achievement target updated to $newTarget'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving target: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingTarget = false);
+    }
+  }
 
   /// Unified sync method - runs all data integration steps
   Future<void> _runFullSync() async {
@@ -213,6 +280,92 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Settings Card at the top
+          _buildAdminCard(
+            title: 'Settings',
+            icon: Icons.settings,
+            color: Colors.purple.shade50,
+            iconColor: Colors.purple.shade900,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Achievement Target',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Patients per nurse for 100% achievement',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    SizedBox(
+                      width: 80,
+                      child: TextField(
+                        controller: _targetController,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          suffixIcon: const Icon(Icons.person, size: 18),
+                        ),
+                        onSubmitted: (value) {
+                          final newTarget = int.tryParse(value);
+                          if (newTarget != null) {
+                            _saveAchievementTarget(newTarget);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _isSavingTarget
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : IconButton(
+                            icon: Icon(
+                              Icons.save,
+                              color: Colors.purple.shade700,
+                            ),
+                            tooltip: 'Save Target',
+                            onPressed: () {
+                              final newTarget = int.tryParse(
+                                _targetController.text,
+                              );
+                              if (newTarget != null) {
+                                _saveAchievementTarget(newTarget);
+                              }
+                            },
+                          ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
           _buildAdminCard(
             title: 'Data Integration',
             icon: Icons.sync_rounded,
@@ -349,6 +502,21 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
                   );
                 },
                 icon: Icons.assignment_ind_outlined,
+              ),
+              const Divider(),
+              _buildActionTile(
+                title: 'Main Schedule Configuration',
+                subtitle: 'Define main schedules and sync patient assignments',
+                isLoading: false,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MainScheduleConfigScreen(),
+                    ),
+                  );
+                },
+                icon: Icons.calendar_today,
               ),
             ],
           ),

@@ -105,6 +105,15 @@ class _LoginScreenState extends State<LoginScreen> {
                         : const Text('Login'),
                   ),
                 ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Developed by Dr. Abdalla Khalaf, Bausher Renal Center',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.normal,
+                    color: Colors.black,
+                  ),
+                ),
               ],
             ),
           ),
