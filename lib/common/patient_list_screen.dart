@@ -6,6 +6,8 @@ import 'patient_dashboard_screen_v2.dart';
 import '../admin/administration_screen.dart';
 import '../admin/nurse_patient_summary_screen.dart';
 import 'about_screen.dart';
+import '../screens/pending_uploads_screen.dart';
+import '../services/background_upload_service.dart';
 
 /// Filter mode for patient list when navigating from other screens
 enum PatientFilterMode {
@@ -47,12 +49,36 @@ class _PatientListScreenState extends State<PatientListScreen> {
   // Bloodweek status with entered_by info (pcid -> entered_by_name)
   Map<int, String?> _bwEnteredBy = {};
 
+  // Upload Queue Listener
+  final BackgroundUploadService _uploadService = BackgroundUploadService();
+  int _pendingUploadCount = 0;
+
   @override
   void initState() {
     super.initState();
     _fetchStaffDetails();
     _syncStaffAssignmentsInBackground(); // Silent sync on load
     _patientsFuture = _fetchPatients();
+
+    // Initialize pending count and listener
+    _updatePendingCount();
+    _uploadService.addListener(_updatePendingCount);
+  }
+
+  @override
+  void dispose() {
+    _uploadService.removeListener(_updatePendingCount);
+    super.dispose();
+  }
+
+  void _updatePendingCount() {
+    final count = _uploadService.getAllPendingUploads().values.fold(
+      0,
+      (sum, list) => sum + list.length,
+    );
+    if (mounted && count != _pendingUploadCount) {
+      setState(() => _pendingUploadCount = count);
+    }
   }
 
   /// Silently syncs nurse-patient assignments in the background
@@ -354,6 +380,48 @@ class _PatientListScreenState extends State<PatientListScreen> {
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
         actions: [
+          // Pending Uploads Button
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.cloud_upload_outlined),
+                tooltip: 'Pending Uploads',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PendingUploadsScreen(),
+                    ),
+                  );
+                },
+              ),
+              if (_pendingUploadCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      '$_pendingUploadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.leaderboard),
             tooltip: 'Nurse Patient Summary',

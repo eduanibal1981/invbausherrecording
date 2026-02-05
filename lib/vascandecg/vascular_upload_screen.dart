@@ -1,6 +1,4 @@
-import 'dart:typed_data';
-
-import 'package:flutter/foundation.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -26,10 +24,7 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
   final BackgroundUploadService _uploadService = BackgroundUploadService();
 
   // Local preview (not yet uploaded)
-  List<_SelectedFile> _selectedFiles = [];
-
-  // Pending uploads (optimistic UI)
-  Map<String, Uint8List> _pendingUploads = {};
+  List<XFile> _selectedFiles = [];
 
   bool _isLoading = false;
   List<Map<String, dynamic>> _uploadedImages = [];
@@ -137,7 +132,7 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
   Future<void> _pickFiles(ImageSource source) async {
     try {
       if (source == ImageSource.camera) {
-        // Camera capture with optimized settings
+        // Camera capture
         final XFile? image = await _picker.pickImage(
           source: source,
           maxWidth: 1600,
@@ -145,25 +140,17 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
           imageQuality: 90,
         );
         if (image != null) {
-          final bytes = await image.readAsBytes();
           setState(() {
-            _selectedFiles.add(
-              _SelectedFile(bytes: bytes, path: image.path, isVideo: false),
-            );
+            _selectedFiles.add(image);
           });
         }
       } else {
         // Multi-select from gallery
         final List<XFile> files = await _picker.pickMultipleMedia();
         if (files.isNotEmpty) {
-          for (var file in files) {
-            final bytes = await file.readAsBytes();
-            final isVideo = _isVideo(file.path);
-            _selectedFiles.add(
-              _SelectedFile(bytes: bytes, path: file.path, isVideo: isVideo),
-            );
-          }
-          setState(() {});
+          setState(() {
+            _selectedFiles.addAll(files);
+          });
         }
       }
     } catch (e) {
@@ -183,152 +170,37 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
         lowerPath.endsWith('.mkv');
   }
 
-  /// Non-blocking upload - starts background uploads and returns immediately
-  void _startBackgroundUpload() {
+  /// Save selected files to queue
+  Future<void> _saveToQueue() async {
     if (_selectedFiles.isEmpty) return;
 
-    // Move selected files to pending uploads (Optimistic UI)
+    int count = 0;
     for (final file in _selectedFiles) {
-      final type = file.isVideo ? 'vascular_video' : 'vascular';
-      final uploadId = _uploadService.addUpload(
-        bytes: file.bytes,
+      final isVideo = _isVideo(file.path);
+      final type = isVideo ? 'vascular_video' : 'vascular';
+
+      await _uploadService.addToQueue(
+        sourcePath: file.path,
+        bytes: null,
         pcid: _pcid,
         type: type,
       );
-      _pendingUploads[uploadId] = file.bytes;
+      count++;
     }
 
-    final count = _selectedFiles.length;
-
-    // Clear selected files immediately (instant feedback)
     setState(() {
       _selectedFiles.clear();
     });
 
-    // Show snackbar with pending count
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$count files uploading in background...'),
-          backgroundColor: Colors.blue,
+          content: Text('$count files saved to pending queue.'),
+          backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
-          action: SnackBarAction(
-            label: 'Dismiss',
-            textColor: Colors.white,
-            onPressed: () {},
-          ),
         ),
       );
     }
-
-    // Start background processing (fire and forget)
-    _processBackgroundUploads();
-  }
-
-  /// Process uploads in background without blocking UI
-  Future<void> _processBackgroundUploads() async {
-    final pendingVascular = _uploadService.getPendingUploads(_pcid, 'vascular');
-    final pendingVideo = _uploadService.getPendingUploads(
-      _pcid,
-      'vascular_video',
-    );
-    final allPending = [...pendingVascular, ...pendingVideo];
-
-    for (final upload in allPending) {
-      if (upload.status == UploadStatus.success) continue;
-
-      // Yield control to let UI render
-      if (!kIsWeb) {
-        await Future.delayed(Duration.zero);
-      }
-
-      _uploadService.updateStatus(upload.id, UploadStatus.uploading);
-
-      try {
-        final isVideo = upload.type == 'vascular_video';
-
-        final result = isVideo
-            ? await CloudinaryService.uploadDopplerVideo(
-                videoBytes: upload.bytes,
-                pcid: _pcid,
-              )
-            : await CloudinaryService.uploadDopplerImage(
-                imageBytes: upload.bytes,
-                pcid: _pcid,
-              );
-
-        if (result.success) {
-          _uploadService.updateStatus(upload.id, UploadStatus.success);
-          _pendingUploads.remove(upload.id);
-        } else {
-          _uploadService.updateStatus(
-            upload.id,
-            UploadStatus.failed,
-            error: result.message ?? 'Upload failed',
-          );
-        }
-      } catch (e) {
-        _uploadService.updateStatus(
-          upload.id,
-          UploadStatus.failed,
-          error: e.toString(),
-        );
-      }
-
-      // Small delay between uploads
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-
-    // Refresh uploaded images after all uploads complete
-    if (mounted) {
-      _fetchUploadedImages();
-
-      // Show completion snackbar
-      final failedUploads = _uploadService
-          .getPendingUploads(_pcid, 'vascular')
-          .where((p) => p.status == UploadStatus.failed)
-          .toList();
-      final failedVideos = _uploadService
-          .getPendingUploads(_pcid, 'vascular_video')
-          .where((p) => p.status == UploadStatus.failed)
-          .toList();
-      final totalFailed = failedUploads.length + failedVideos.length;
-
-      if (totalFailed == 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('All files uploaded successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$totalFailed upload(s) failed. Tap to retry.'),
-            backgroundColor: Colors.orange,
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: () => _retryFailedUploads(),
-            ),
-          ),
-        );
-      }
-    }
-  }
-
-  void _retryFailedUploads() {
-    final pendingVascular = _uploadService.getPendingUploads(_pcid, 'vascular');
-    final pendingVideo = _uploadService.getPendingUploads(
-      _pcid,
-      'vascular_video',
-    );
-    for (final upload in [...pendingVascular, ...pendingVideo]) {
-      if (upload.status == UploadStatus.failed) {
-        _uploadService.retryUpload(upload.id);
-      }
-    }
-    _processBackgroundUploads();
   }
 
   Future<void> _deleteImage(Map<String, dynamic> image) async {
@@ -600,38 +472,9 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Upload New Images/Videos',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      // Non-blocking indicator
-                      if (uploadingCount > 0)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '✓ Uploading in background',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.green.shade800,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                    ],
+                  const Text(
+                    'Upload New Images/Videos',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
 
@@ -678,11 +521,12 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                         separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
                           final file = _selectedFiles[index];
+                          final isVideo = _isVideo(file.path);
                           return Stack(
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: file.isVideo
+                                child: isVideo
                                     ? Container(
                                         width: 100,
                                         height: 100,
@@ -695,14 +539,14 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                                           ),
                                         ),
                                       )
-                                    : Image.memory(
-                                        file.bytes,
+                                    : Image.file(
+                                        File(file.path),
                                         width: 100,
                                         height: 100,
                                         fit: BoxFit.cover,
                                       ),
                               ),
-                              if (file.isVideo)
+                              if (isVideo)
                                 const Positioned.fill(
                                   child: Center(
                                     child: Icon(
@@ -750,10 +594,11 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                         const SizedBox(width: 16),
                         Expanded(
                           child: FilledButton.icon(
-                            onPressed: _startBackgroundUpload,
-                            icon: const Icon(Icons.cloud_upload),
-                            label: Text(
-                              'Upload ${_selectedFiles.length} Items',
+                            onPressed: _saveToQueue,
+                            icon: const Icon(Icons.save_as),
+                            label: Text('Save ${_selectedFiles.length} Items'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.orange.shade700,
                             ),
                           ),
                         ),
@@ -766,12 +611,21 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                     const SizedBox(height: 16),
                     const Divider(),
                     const SizedBox(height: 8),
-                    Text(
-                      'Uploading: ${allActivePending.length} files',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade700,
-                      ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.pending_actions,
+                          color: Colors.blue.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Pending Uploads: ${allActivePending.length} files',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     SizedBox(
@@ -782,11 +636,8 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                         separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
                           final pending = allActivePending[index];
-                          final isUploading =
-                              pending.status == UploadStatus.uploading;
-                          final isFailed =
-                              pending.status == UploadStatus.failed;
                           final isVideo = pending.type == 'vascular_video';
+                          final file = File(pending.filePath);
 
                           return Stack(
                             children: [
@@ -804,39 +655,47 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                                       )
                                     : ColorFiltered(
                                         colorFilter: ColorFilter.mode(
-                                          Colors.black.withOpacity(0.3),
+                                          Colors.black.withOpacity(0.1),
                                           BlendMode.darken,
                                         ),
-                                        child: Image.memory(
-                                          pending.bytes,
-                                          height: 80,
-                                          width: 80,
-                                          fit: BoxFit.cover,
-                                        ),
+                                        child: file.existsSync()
+                                            ? Image.file(
+                                                file,
+                                                height: 80,
+                                                width: 80,
+                                                fit: BoxFit.cover,
+                                              )
+                                            : const SizedBox(
+                                                width: 80,
+                                                height: 80,
+                                                child: Icon(Icons.broken_image),
+                                              ),
                                       ),
                               ),
-                              Positioned.fill(
-                                child: Center(
-                                  child: isFailed
-                                      ? const Icon(
-                                          Icons.error,
-                                          color: Colors.red,
-                                          size: 24,
-                                        )
-                                      : isUploading
-                                      ? const SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.hourglass_empty,
-                                          color: Colors.white70,
-                                          size: 20,
-                                        ),
+                              if (isVideo)
+                                const Positioned.fill(
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.play_arrow,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                child: IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    size: 16,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () =>
+                                      _uploadService.removeUpload(pending.id),
+                                  color: Colors.white,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
                                 ),
                               ),
                             ],
@@ -864,7 +723,6 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 8),
 
           // Images Grid
           Expanded(
@@ -983,14 +841,3 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
 }
 
 /// Helper class to hold selected file data
-class _SelectedFile {
-  final Uint8List bytes;
-  final String path;
-  final bool isVideo;
-
-  _SelectedFile({
-    required this.bytes,
-    required this.path,
-    required this.isVideo,
-  });
-}

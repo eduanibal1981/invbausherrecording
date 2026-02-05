@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/cloudinary_service.dart';
@@ -19,11 +18,8 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
   final ImagePicker _picker = ImagePicker();
   final BackgroundUploadService _uploadService = BackgroundUploadService();
 
-  // Selected images ready to upload (local preview)
-  List<Uint8List> _selectedImagesBytes = [];
-
-  // Pending uploads (optimistic UI - shown during background upload)
-  Map<String, Uint8List> _pendingUploads = {};
+  // Selected images ready to queue (local preview)
+  List<XFile> _selectedFiles = [];
 
   bool _isLoading = false;
   List<Map<String, dynamic>> _uploadedImages = [];
@@ -50,7 +46,7 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
   void _onUploadServiceChanged() {
     if (mounted) {
       setState(() {});
-      // Refresh images if any upload completed
+      // Refresh images if any upload completed (handled by separate process now, but good to keep sync)
       final pending = _uploadService.getPendingUploads(_pcid, 'ecg');
       if (pending.any((p) => p.status == UploadStatus.success)) {
         _fetchUploadedImages();
@@ -77,32 +73,29 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
   Future<void> _pickImages(ImageSource source) async {
     try {
       if (source == ImageSource.camera) {
-        // Single camera capture with optimized settings
+        // Single camera capture
         final XFile? image = await _picker.pickImage(
           source: ImageSource.camera,
-          maxWidth: 1600, // Reduced for faster processing
+          maxWidth: 1600,
           maxHeight: 1600,
           imageQuality: 90,
         );
         if (image != null) {
-          final bytes = await image.readAsBytes();
           setState(() {
-            _selectedImagesBytes.add(bytes);
+            _selectedFiles.add(image);
           });
         }
       } else {
-        // Multi-select from gallery with optimized settings
+        // Multi-select from gallery
         final List<XFile> images = await _picker.pickMultiImage(
           maxWidth: 1600,
           maxHeight: 1600,
           imageQuality: 90,
         );
         if (images.isNotEmpty) {
-          for (var img in images) {
-            final bytes = await img.readAsBytes();
-            _selectedImagesBytes.add(bytes);
-          }
-          setState(() {});
+          setState(() {
+            _selectedFiles.addAll(images);
+          });
         }
       }
     } catch (e) {
@@ -114,124 +107,34 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
     }
   }
 
-  /// Non-blocking upload - starts background uploads and returns immediately
-  void _startBackgroundUpload() {
-    if (_selectedImagesBytes.isEmpty) return;
+  /// Save selected files to the upload queue and clear selection
+  Future<void> _saveToQueue() async {
+    if (_selectedFiles.isEmpty) return;
 
-    // Move selected images to pending uploads (Optimistic UI)
-    for (final bytes in _selectedImagesBytes) {
-      final uploadId = _uploadService.addUpload(
-        bytes: bytes,
+    int addedCount = 0;
+    for (final file in _selectedFiles) {
+      await _uploadService.addToQueue(
+        sourcePath: file.path,
+        bytes: null, // Bytes not needed for local path
         pcid: _pcid,
         type: 'ecg',
       );
-      _pendingUploads[uploadId] = bytes;
+      addedCount++;
     }
 
-    // Clear selected images immediately (instant feedback)
     setState(() {
-      _selectedImagesBytes.clear();
+      _selectedFiles.clear();
     });
 
-    // Show snackbar with pending count
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            '${_pendingUploads.length} images uploading in background...',
-          ),
-          backgroundColor: Colors.blue,
+          content: Text('$addedCount images saved to pending queue.'),
+          backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
-          action: SnackBarAction(
-            label: 'Dismiss',
-            textColor: Colors.white,
-            onPressed: () {},
-          ),
         ),
       );
     }
-
-    // Start background processing (fire and forget)
-    _processBackgroundUploads();
-  }
-
-  /// Process uploads in background without blocking UI
-  Future<void> _processBackgroundUploads() async {
-    final pendingIds = List<String>.from(_pendingUploads.keys);
-
-    for (final uploadId in pendingIds) {
-      final upload = _uploadService.getUpload(uploadId);
-      if (upload == null || upload.status == UploadStatus.success) continue;
-
-      // Yield control to let UI render
-      if (!kIsWeb) {
-        await Future.delayed(Duration.zero);
-      }
-
-      _uploadService.updateStatus(uploadId, UploadStatus.uploading);
-
-      try {
-        final result = await CloudinaryService.uploadEcgImage(
-          imageBytes: upload.bytes,
-          pcid: _pcid,
-        );
-
-        if (result.success) {
-          _uploadService.updateStatus(uploadId, UploadStatus.success);
-          _pendingUploads.remove(uploadId);
-        } else {
-          _uploadService.updateStatus(
-            uploadId,
-            UploadStatus.failed,
-            error: result.message ?? 'Upload failed',
-          );
-        }
-      } catch (e) {
-        _uploadService.updateStatus(
-          uploadId,
-          UploadStatus.failed,
-          error: e.toString(),
-        );
-      }
-
-      // Small delay between uploads to prevent overwhelming the server
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-
-    // Refresh uploaded images after all uploads complete
-    if (mounted) {
-      _fetchUploadedImages();
-
-      // Show completion snackbar
-      final failedCount = _pendingUploads.values.length;
-      if (failedCount == 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('All images uploaded successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else if (failedCount > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$failedCount upload(s) failed. Tap to retry.'),
-            backgroundColor: Colors.orange,
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: () => _retryFailedUploads(),
-            ),
-          ),
-        );
-      }
-    }
-  }
-
-  void _retryFailedUploads() {
-    for (final uploadId in _pendingUploads.keys) {
-      _uploadService.retryUpload(uploadId);
-    }
-    _processBackgroundUploads();
   }
 
   Future<void> _deleteImage(Map<String, dynamic> image) async {
@@ -313,13 +216,6 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
   @override
   Widget build(BuildContext context) {
     final activePending = _uploadService.getPendingUploads(_pcid, 'ecg');
-    final uploadingCount = activePending
-        .where(
-          (p) =>
-              p.status == UploadStatus.pending ||
-              p.status == UploadStatus.uploading,
-        )
-        .length;
 
     return Scaffold(
       appBar: AppBar(
@@ -334,33 +230,6 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
             const Text('         == ECG ==', style: TextStyle(fontSize: 14)),
           ],
         ),
-        actions: [
-          // Background upload indicator
-          if (uploadingCount > 0)
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '$uploadingCount',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-        ],
       ),
       body: Column(
         children: [
@@ -395,38 +264,9 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Upload ECG Strip',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      // Non-blocking indicator
-                      if (uploadingCount > 0)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '✓ Uploading in background',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.green.shade800,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                    ],
+                  const Text(
+                    'Add New ECG',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
 
@@ -457,11 +297,11 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
                     ],
                   ),
 
-                  // Image Preview (selected, not yet uploaded)
-                  if (_selectedImagesBytes.isNotEmpty) ...[
+                  // Image Preview (selected, not yet queued)
+                  if (_selectedFiles.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text(
-                      'Selected: ${_selectedImagesBytes.length} images',
+                      'Selected: ${_selectedFiles.length} images',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
@@ -469,15 +309,15 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
                       height: 100,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
-                        itemCount: _selectedImagesBytes.length,
+                        itemCount: _selectedFiles.length,
                         separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
                           return Stack(
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: Image.memory(
-                                  _selectedImagesBytes[index],
+                                child: Image.file(
+                                  File(_selectedFiles[index].path),
                                   height: 100,
                                   width: 100,
                                   fit: BoxFit.cover,
@@ -489,7 +329,7 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
                                 child: GestureDetector(
                                   onTap: () {
                                     setState(() {
-                                      _selectedImagesBytes.removeAt(index);
+                                      _selectedFiles.removeAt(index);
                                     });
                                   },
                                   child: Container(
@@ -513,7 +353,7 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () => setState(() {
-                              _selectedImagesBytes.clear();
+                              _selectedFiles.clear();
                             }),
                             child: const Text('Clear All'),
                           ),
@@ -521,26 +361,38 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
                         const SizedBox(width: 16),
                         Expanded(
                           child: FilledButton.icon(
-                            onPressed: _startBackgroundUpload,
-                            icon: const Icon(Icons.cloud_upload),
-                            label: const Text('Upload All'),
+                            onPressed: _saveToQueue,
+                            icon: const Icon(Icons.save_as),
+                            label: const Text('Save to Queue'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.orange.shade700,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ],
 
-                  // Pending uploads (optimistic UI) - show thumbnails of uploading images
+                  // Pending uploads (local queue)
                   if (activePending.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     const Divider(),
                     const SizedBox(height: 8),
-                    Text(
-                      'Uploading: ${activePending.length} images',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade700,
-                      ),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.pending_actions,
+                          color: Colors.blue.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Pending Uploads: ${activePending.length} images',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     SizedBox(
@@ -551,10 +403,7 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
                         separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
                           final pending = activePending[index];
-                          final isUploading =
-                              pending.status == UploadStatus.uploading;
-                          final isFailed =
-                              pending.status == UploadStatus.failed;
+                          final file = File(pending.filePath);
 
                           return Stack(
                             children: [
@@ -562,39 +411,37 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
                                 borderRadius: BorderRadius.circular(8),
                                 child: ColorFiltered(
                                   colorFilter: ColorFilter.mode(
-                                    Colors.black.withOpacity(0.3),
+                                    Colors.black.withOpacity(0.1),
                                     BlendMode.darken,
                                   ),
-                                  child: Image.memory(
-                                    pending.bytes,
-                                    height: 80,
-                                    width: 80,
-                                    fit: BoxFit.cover,
-                                  ),
+                                  child: file.existsSync()
+                                      ? Image.file(
+                                          file,
+                                          height: 80,
+                                          width: 80,
+                                          fit: BoxFit.cover,
+                                        )
+                                      : const SizedBox(
+                                          height: 80,
+                                          width: 80,
+                                          child: Icon(Icons.broken_image),
+                                        ),
                                 ),
                               ),
-                              Positioned.fill(
-                                child: Center(
-                                  child: isFailed
-                                      ? const Icon(
-                                          Icons.error,
-                                          color: Colors.red,
-                                          size: 24,
-                                        )
-                                      : isUploading
-                                      ? const SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.hourglass_empty,
-                                          color: Colors.white70,
-                                          size: 20,
-                                        ),
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                child: IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    size: 16,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () =>
+                                      _uploadService.removeUpload(pending.id),
+                                  color: Colors.white,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
                                 ),
                               ),
                             ],
