@@ -421,16 +421,17 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                  child: kIsWeb
-                                      ? Image.network(
-                                          pending.filePath,
-                                          height: 80,
-                                          width: 80,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) =>
-                                              const Icon(Icons.broken_image),
-                                        )
-                                      : (file.existsSync()
+                                child: kIsWeb
+                                    ? Image.network(
+                                        pending.filePath,
+                                        height: 80,
+                                        width: 80,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) =>
+                                                const Icon(Icons.broken_image),
+                                      )
+                                    : (file.existsSync()
                                           ? Image.file(
                                               file,
                                               height: 80,
@@ -442,7 +443,6 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
                                               width: 80,
                                               child: Icon(Icons.broken_image),
                                             )),
-                                ),
                               ),
                               Positioned(
                                 right: 0,
