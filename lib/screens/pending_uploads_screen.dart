@@ -36,7 +36,7 @@ class _PendingUploadsScreenState extends State<PendingUploadsScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Upload queue processing started...')),
+        const SnackBar(content: Text('Upload processing finished.')),
       );
     }
   }

@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import '../services/cloudinary_service.dart';
 import '../services/background_upload_service.dart';
 
@@ -113,9 +116,18 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
 
     int addedCount = 0;
     for (final file in _selectedFiles) {
+      Uint8List? fileBytes;
+      try {
+        // On web we need to preload bytes if they aren't available immediately
+        // But _selectedFiles is List<XFile>, so we can read bytes
+        fileBytes = await file.readAsBytes();
+      } catch (e) {
+        debugPrint('Error reading file bytes: $e');
+      }
+
       await _uploadService.addToQueue(
         sourcePath: file.path,
-        bytes: null, // Bytes not needed for local path
+        bytes: fileBytes, // Pass bytes for Web
         pcid: _pcid,
         type: 'ecg',
       );
@@ -409,23 +421,27 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: ColorFiltered(
-                                  colorFilter: ColorFilter.mode(
-                                    Colors.black.withOpacity(0.1),
-                                    BlendMode.darken,
-                                  ),
-                                  child: file.existsSync()
-                                      ? Image.file(
-                                          file,
+                                  child: kIsWeb
+                                      ? Image.network(
+                                          pending.filePath,
                                           height: 80,
                                           width: 80,
                                           fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) =>
+                                              const Icon(Icons.broken_image),
                                         )
-                                      : const SizedBox(
-                                          height: 80,
-                                          width: 80,
-                                          child: Icon(Icons.broken_image),
-                                        ),
+                                      : (file.existsSync()
+                                          ? Image.file(
+                                              file,
+                                              height: 80,
+                                              width: 80,
+                                              fit: BoxFit.cover,
+                                            )
+                                          : const SizedBox(
+                                              height: 80,
+                                              width: 80,
+                                              child: Icon(Icons.broken_image),
+                                            )),
                                 ),
                               ),
                               Positioned(

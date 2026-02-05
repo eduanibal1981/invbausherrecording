@@ -9,13 +9,14 @@ import 'cloudinary_service.dart';
 /// Tracks a pending upload with its metadata
 class PendingUpload {
   final String id;
-  final String filePath; // Path to the local file
+  final String filePath; // Path to the local file (or identifier on Web)
   final String pcid;
   final String type; // 'ecg', 'vascular', 'vascular_video'
   final DateTime startedAt;
   UploadStatus status;
   String? error;
   int retryCount;
+  Uint8List? memoryBytes; // Transient storage for Web
 
   PendingUpload({
     required this.id,
@@ -26,6 +27,7 @@ class PendingUpload {
     this.status = UploadStatus.pending,
     this.error,
     this.retryCount = 0,
+    this.memoryBytes,
   }) : startedAt = startedAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
@@ -37,6 +39,7 @@ class PendingUpload {
     'status': status.index,
     'error': error,
     'retryCount': retryCount,
+    // memoryBytes is not serialized
   };
 
   factory PendingUpload.fromJson(Map<String, dynamic> json) => PendingUpload(
@@ -109,7 +112,7 @@ class BackgroundUploadService extends ChangeNotifier {
   /// Add a file to the persistent queue
   Future<String> addToQueue({
     required String sourcePath, // Original path from picker
-    required Uint8List? bytes, // Optional: for Web support if needed later
+    required Uint8List? bytes, // Required for Web
     required String pcid,
     required String type,
   }) async {
@@ -131,17 +134,24 @@ class BackgroundUploadService extends ChangeNotifier {
       final newPath = '${uploadsDir.path}/${id}_$fileName';
 
       // Copy the file
-      await File(sourcePath).copy(newPath);
-      savedPath = newPath;
+      try {
+        await File(sourcePath).copy(newPath);
+        savedPath = newPath;
+      } catch (e) {
+        debugPrint('Error copying file: $e');
+        // Fallback or rethrow?
+      }
+    } else {
+      // Web: savedPath is less relevant but keep sourcePath or generate a dummy one
+      // Bytes are stored in memory
     }
-    // For web, we might need a different strategy, but assuming this is Windows/Mobile per user context.
-    // If only bytes were provided (unlikely with this refactor), we'd need to handle that.
 
     final upload = PendingUpload(
       id: id,
       filePath: savedPath,
       pcid: pcid,
       type: type,
+      memoryBytes: kIsWeb ? bytes : null,
     );
 
     _pendingUploads[id] = upload;
@@ -263,39 +273,86 @@ class BackgroundUploadService extends ChangeNotifier {
 
   /// Process the queue sequentially
   Future<void> processQueue() async {
-    if (_isProcessing) return;
+    if (_isProcessing) {
+      debugPrint('BackgroundUploadService: Already processing queue');
+      return;
+    }
     _isProcessing = true;
     notifyListeners();
+    debugPrint('BackgroundUploadService: Starting queue processing');
 
     try {
       final allPending = getAllPendingUploads();
+      debugPrint(
+        'BackgroundUploadService: Found ${allPending.length} patients with pending items',
+      );
 
       // Flatten logic: Iterate through all pending items
       List<PendingUpload> uploadsToProcess = [];
       allPending.forEach((key, list) {
         uploadsToProcess.addAll(list);
       });
+      debugPrint(
+        'BackgroundUploadService: Total items to process: ${uploadsToProcess.length}',
+      );
 
       for (final upload in uploadsToProcess) {
         // Skip if already success (shouldn't happen with getPending but safe check)
-        if (upload.status == UploadStatus.success) continue;
+        if (upload.status == UploadStatus.success) {
+          debugPrint(
+            'BackgroundUploadService: Skipping ${upload.id} (Success)',
+          );
+          continue;
+        }
 
         // Determine if we should stop (could add a cancel flag later)
+
+        debugPrint(
+          'BackgroundUploadService: Processing ${upload.id} (${upload.type})',
+        );
 
         await updateStatus(upload.id, UploadStatus.uploading);
 
         try {
-          final file = File(upload.filePath);
-          if (!await file.exists()) {
-            await updateStatus(
-              upload.id,
-              UploadStatus.failed,
-              error: 'File not found',
-            );
-            continue;
+          Uint8List? bytes;
+
+          if (kIsWeb) {
+            bytes = upload.memoryBytes;
+            if (bytes == null || bytes.isEmpty) {
+              // Try to reload from Blob URL? No, blob URLs are usually revoked.
+              // If bytes are null on web, it means page refresh lost them.
+              debugPrint(
+                'BackgroundUploadService: Web upload missing memory bytes (lost on refresh?)',
+              );
+              await updateStatus(
+                upload.id,
+                UploadStatus.failed,
+                error: 'Data lost (refresh). Please add again.',
+              );
+              continue;
+            }
+          } else {
+            // Mobile/Desktop
+            final file = File(upload.filePath);
+            if (!await file.exists()) {
+              debugPrint(
+                'BackgroundUploadService: File not found at ${upload.filePath}',
+              );
+              await updateStatus(
+                upload.id,
+                UploadStatus.failed,
+                error: 'File not found',
+              );
+              continue;
+            }
+            bytes = await file.readAsBytes();
           }
 
-          final bytes = await file.readAsBytes();
+          debugPrint('BackgroundUploadService: Read ${bytes?.length} bytes');
+
+          if (bytes == null || bytes.isEmpty) {
+            throw Exception('File content is empty');
+          }
 
           dynamic result;
           if (upload.type == 'ecg') {
@@ -316,15 +373,15 @@ class BackgroundUploadService extends ChangeNotifier {
           }
 
           if (result != null && result.success) {
+            debugPrint('BackgroundUploadService: Upload success');
             await updateStatus(upload.id, UploadStatus.success);
           } else {
-            await updateStatus(
-              upload.id,
-              UploadStatus.failed,
-              error: result?.message ?? 'Upload failed',
-            );
+            final err = result?.message ?? 'Upload failed';
+            debugPrint('BackgroundUploadService: Upload failed - $err');
+            await updateStatus(upload.id, UploadStatus.failed, error: err);
           }
         } catch (e) {
+          debugPrint('BackgroundUploadService: Exception - $e');
           await updateStatus(
             upload.id,
             UploadStatus.failed,
@@ -335,7 +392,10 @@ class BackgroundUploadService extends ChangeNotifier {
         // Artificial delay to prevent flooding
         await Future.delayed(const Duration(milliseconds: 200));
       }
+    } catch (e) {
+      debugPrint('BackgroundUploadService: Fatal error in processQueue - $e');
     } finally {
+      debugPrint('BackgroundUploadService: Queue processing finished');
       _isProcessing = false;
       notifyListeners();
     }

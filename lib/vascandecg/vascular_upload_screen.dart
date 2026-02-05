@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/cloudinary_service.dart';
 import '../services/background_upload_service.dart';
@@ -179,9 +182,16 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
       final isVideo = _isVideo(file.path);
       final type = isVideo ? 'vascular_video' : 'vascular';
 
+      Uint8List? fileBytes;
+      try {
+        fileBytes = await file.readAsBytes();
+      } catch (e) {
+        debugPrint('Error reading file bytes: $e');
+      }
+
       await _uploadService.addToQueue(
         sourcePath: file.path,
-        bytes: null,
+        bytes: fileBytes,
         pcid: _pcid,
         type: type,
       );
@@ -539,12 +549,23 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
                                           ),
                                         ),
                                       )
-                                    : Image.file(
-                                        File(file.path),
-                                        width: 100,
-                                        height: 100,
-                                        fit: BoxFit.cover,
-                                      ),
+                                    : (kIsWeb
+                                          ? Image.network(
+                                              file.path,
+                                              width: 100,
+                                              height: 100,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (c, e, s) =>
+                                                  const Icon(
+                                                    Icons.broken_image,
+                                                  ),
+                                            )
+                                          : Image.file(
+                                              File(file.path),
+                                              width: 100,
+                                              height: 100,
+                                              fit: BoxFit.cover,
+                                            )),
                               ),
                               if (isVideo)
                                 const Positioned.fill(
