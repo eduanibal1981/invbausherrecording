@@ -11,12 +11,13 @@ class NurseAssignmentScreen extends StatefulWidget {
   State<NurseAssignmentScreen> createState() => _NurseAssignmentScreenState();
 }
 
+// ==============
 class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   List<Map<String, dynamic>> _nurses = [];
   Map<int, List<Map<String, dynamic>>> _nurseAssignments =
-      {}; // staffid -> list of assignments
+      {}; // staffid -> list of assignments - to
   Map<int, int> _patientCounts = {}; // staffid -> patient count
   List<Map<String, dynamic>> _availableSlots =
       []; // All hall/day/shift combinations
@@ -217,7 +218,7 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Removed $hall - $day - $shift'),
-            backgroundColor: Colors.orange,
+            backgroundColor: Colors.green, // TODO: Change to orange
           ),
         );
       }
