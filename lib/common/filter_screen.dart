@@ -18,11 +18,14 @@ class _FilterScreenState extends State<FilterScreen> {
   String? _vascularFilter; // null = Any, 'has' = Has Images, 'none' = No Images
   String? _ecgFilter; // null = Any, 'has' = Has Images, 'none' = No Images
   String? _vaccessFilter; // null = Any, or specific access type
+  bool _hasSearchText = false;
 
   @override
   void initState() {
     super.initState();
     _searchController.text = widget.initialFilters['search'] ?? '';
+    _hasSearchText = _searchController.text.trim().isNotEmpty;
+    _searchController.addListener(_handleSearchChanged);
     _hallName = widget.initialFilters['hallname'];
     _day = widget.initialFilters['day'];
     _shift = widget.initialFilters['shift'];
@@ -34,8 +37,15 @@ class _FilterScreenState extends State<FilterScreen> {
 
   @override
   void dispose() {
+    _searchController.removeListener(_handleSearchChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _handleSearchChanged() {
+    final hasText = _searchController.text.trim().isNotEmpty;
+    if (hasText == _hasSearchText) return;
+    setState(() => _hasSearchText = hasText);
   }
 
   void _apply() {
@@ -65,10 +75,20 @@ class _FilterScreenState extends State<FilterScreen> {
         children: [
           TextFormField(
             controller: _searchController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Search Name or ID',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.search),
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _hasSearchText
+                  ? IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        _handleSearchChanged();
+                      },
+                    )
+                  : null,
             ),
           ),
           const SizedBox(height: 16),

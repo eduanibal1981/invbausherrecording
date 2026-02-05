@@ -190,12 +190,13 @@ class _PatientListScreenState extends State<PatientListScreen> {
         _filters = result;
       });
 
-      // Special handling: if Vascular or ECG filter is active, we check DB consistency first
+      // Special handling: if Vascular or ECG filter is active, refresh media status
       if (_filters['vascularFilter'] != null || _filters['ecgFilter'] != null) {
         await _refreshMediaStatus();
-      } else {
-        _applyFilters();
       }
+
+      // Always apply schedule filters (hall/day/shift) regardless of media filters
+      _applyFilters();
     }
   }
 
@@ -580,7 +581,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Filtering by: ${_filters.entries.map((e) => e.key == 'showLabNotRecorded' ? 'Lab Not Recorded' : e.value).join(", ")}',
+                      'Filtering by: ${_filters.entries.map((e) => _labelForFilter(e.key, e.value)).join(", ")}',
                       style: TextStyle(color: Colors.teal.shade900),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -816,5 +817,32 @@ class _PatientListScreenState extends State<PatientListScreen> {
         ],
       ),
     );
+  }
+
+  String _labelForFilter(String key, dynamic value) {
+    switch (key) {
+      case 'showLabNotRecorded':
+        return 'Lab Not Recorded';
+      case 'vascularFilter':
+        if (value == 'has') return 'Has Doppler';
+        if (value == 'none') return 'No Doppler';
+        return 'Doppler: Any';
+      case 'ecgFilter':
+        if (value == 'has') return 'Has ECG';
+        if (value == 'none') return 'No ECG';
+        return 'ECG: Any';
+      case 'hallname':
+        return 'Hall: $value';
+      case 'day':
+        return 'Day: $value';
+      case 'shift':
+        return 'Shift: $value';
+      case 'search':
+        return 'Search: $value';
+      case 'vaccessFilter':
+        return 'Access: $value';
+      default:
+        return value?.toString() ?? key;
+    }
   }
 }

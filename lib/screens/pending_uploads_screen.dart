@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/background_upload_service.dart';
 
@@ -48,6 +47,7 @@ class _PendingUploadsScreenState extends State<PendingUploadsScreen> {
       0,
       (sum, list) => sum + list.length,
     );
+    final activeUpload = _findActiveUpload(groupedUploads);
 
     return Scaffold(
       appBar: AppBar(
@@ -82,87 +82,186 @@ class _PendingUploadsScreenState extends State<PendingUploadsScreen> {
             ),
         ],
       ),
-      body: groupedUploads.isEmpty
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.check_circle_outline,
-                    size: 64,
-                    color: Colors.green,
+      body: Stack(
+        children: [
+          groupedUploads.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        size: 64,
+                        color: Colors.green,
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'No pending uploads',
+                        style: TextStyle(fontSize: 18, color: Colors.grey),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 16),
-                  Text(
-                    'No pending uploads',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              itemCount: groupedUploads.length,
-              itemBuilder: (context, index) {
-                final pcid = groupedUploads.keys.elementAt(index);
-                final uploads = groupedUploads[pcid]!;
+                )
+              : ListView.builder(
+                  itemCount: groupedUploads.length,
+                  itemBuilder: (context, index) {
+                    final pcid = groupedUploads.keys.elementAt(index);
+                    final uploads = groupedUploads[pcid]!;
 
-                // Group stats
-                final ecgCount = uploads.where((u) => u.type == 'ecg').length;
-                final vascularCount = uploads
-                    .where((u) => u.type == 'vascular')
-                    .length;
-                final videoCount = uploads
-                    .where((u) => u.type == 'vascular_video')
-                    .length;
+                    // Group stats
+                    final ecgCount =
+                        uploads.where((u) => u.type == 'ecg').length;
+                    final vascularCount = uploads
+                        .where((u) => u.type == 'vascular')
+                        .length;
+                    final videoCount = uploads
+                        .where((u) => u.type == 'vascular_video')
+                        .length;
 
-                return Card(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: ExpansionTile(
-                    title: Text('Patient ID: $pcid'),
-                    subtitle: Text(
-                      '$ecgCount ECG • $vascularCount Vascular • $videoCount Videos',
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    children: uploads.map((upload) {
-                      return ListTile(
-                        leading: _buildLeadingIcon(upload),
-                        title: Text(
-                          upload.filePath.split(Platform.pathSeparator).last,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      child: ExpansionTile(
+                        title: Text('Patient ID: $pcid'),
+                        subtitle: Text(
+                          '$ecgCount ECG • $vascularCount Vascular • $videoCount Videos',
+                          style: const TextStyle(color: Colors.grey),
                         ),
-                        subtitle: upload.status == UploadStatus.failed
-                            ? Text(
-                                upload.error ?? 'Failed',
-                                style: const TextStyle(color: Colors.red),
-                              )
-                            : Text(upload.status.toString().split('.').last),
-                        trailing: upload.status == UploadStatus.uploading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : IconButton(
-                                icon: const Icon(
-                                  Icons.delete,
-                                  color: Colors.redAccent,
-                                ),
-                                onPressed: () =>
-                                    _uploadService.removeUpload(upload.id),
-                              ),
-                      );
-                    }).toList(),
-                  ),
-                );
-              },
-            ),
+                        children: uploads.map((upload) {
+                          return ListTile(
+                            leading: _buildLeadingIcon(upload),
+                            title: Text(
+                              _safeFileName(upload.filePath),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: upload.status == UploadStatus.failed
+                                ? Text(
+                                    upload.error ?? 'Failed',
+                                    style: const TextStyle(color: Colors.red),
+                                  )
+                                : Text(
+                                    upload.status.toString().split('.').last,
+                                  ),
+                            trailing: upload.status == UploadStatus.uploading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : IconButton(
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      color: Colors.redAccent,
+                                    ),
+                                    onPressed: () =>
+                                        _uploadService.removeUpload(upload.id),
+                                  ),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  },
+                ),
+          if (_uploadService.isProcessing)
+            Center(child: _buildUploadingBanner(activeUpload, totalCount)),
+        ],
+      ),
     );
+  }
+
+  PendingUpload? _findActiveUpload(
+    Map<String, List<PendingUpload>> groupedUploads,
+  ) {
+    for (final uploads in groupedUploads.values) {
+      for (final upload in uploads) {
+        if (upload.status == UploadStatus.uploading) return upload;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildUploadingBanner(PendingUpload? upload, int totalCount) {
+    final title = upload != null
+        ? 'Uploading ${_typeLabel(upload.type)}'
+        : 'Uploading images';
+    final subtitle = upload != null
+        ? 'Patient ID: ${upload.pcid} • ${_safeFileName(upload.filePath)}'
+        : 'Items remaining: $totalCount';
+
+    return IgnorePointer(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.95),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.teal.shade100),
+            boxShadow: const [
+              BoxShadow(
+                color: Color.fromARGB(40, 0, 0, 0),
+                blurRadius: 8,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.teal,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.grey.shade700),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _typeLabel(String type) {
+    if (type == 'ecg') return 'ECG image';
+    if (type == 'vascular') return 'Doppler image';
+    if (type == 'vascular_video') return 'Doppler video';
+    return 'image';
+  }
+
+  String _safeFileName(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final lastSlash = normalized.lastIndexOf('/');
+    if (lastSlash == -1) return path;
+    final name = normalized.substring(lastSlash + 1);
+    return name.isEmpty ? path : name;
   }
 
   Widget _buildLeadingIcon(PendingUpload upload) {
