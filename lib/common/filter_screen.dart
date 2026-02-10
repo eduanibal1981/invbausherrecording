@@ -14,7 +14,7 @@ class _FilterScreenState extends State<FilterScreen> {
   String? _hallName;
   String? _day;
   String? _shift;
-  bool _showLabNotRecorded = false;
+  String? _labFilter; // null = Any, 'has' = Has Labs, 'none' = No Labs
   String? _vascularFilter; // null = Any, 'has' = Has Images, 'none' = No Images
   String? _ecgFilter; // null = Any, 'has' = Has Images, 'none' = No Images
   String? _vaccessFilter; // null = Any, or specific access type
@@ -29,7 +29,11 @@ class _FilterScreenState extends State<FilterScreen> {
     _hallName = widget.initialFilters['hallname'];
     _day = widget.initialFilters['day'];
     _shift = widget.initialFilters['shift'];
-    _showLabNotRecorded = widget.initialFilters['showLabNotRecorded'] ?? false;
+    _labFilter = widget.initialFilters['labFilter'];
+    if (_labFilter == null &&
+        widget.initialFilters['showLabNotRecorded'] == true) {
+      _labFilter = 'none';
+    }
     _vascularFilter = widget.initialFilters['vascularFilter'];
     _ecgFilter = widget.initialFilters['ecgFilter'];
     _vaccessFilter = widget.initialFilters['vaccessFilter'];
@@ -55,7 +59,7 @@ class _FilterScreenState extends State<FilterScreen> {
       if (_hallName != null) 'hallname': _hallName,
       if (_day != null) 'day': _day,
       if (_shift != null) 'shift': _shift,
-      if (_showLabNotRecorded) 'showLabNotRecorded': true,
+      if (_labFilter != null) 'labFilter': _labFilter,
       if (_vascularFilter != null) 'vascularFilter': _vascularFilter,
       if (_ecgFilter != null) 'ecgFilter': _ecgFilter,
       if (_vaccessFilter != null) 'vaccessFilter': _vaccessFilter,
@@ -222,13 +226,44 @@ class _FilterScreenState extends State<FilterScreen> {
               borderRadius: BorderRadius.circular(12),
               side: BorderSide(color: Colors.orange.shade100),
             ),
-            child: CheckboxListTile(
-              title: const Text('Show Patients Last Lab not Recorded'),
-              subtitle: const Text('Lab not recorded this month'),
-              value: _showLabNotRecorded,
-              activeColor: Colors.orange,
-              onChanged: (val) =>
-                  setState(() => _showLabNotRecorded = val ?? false),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Monthly Labs',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _labFilter,
+                    decoration: InputDecoration(
+                      labelText: 'Filter By',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 0,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Any')),
+                      DropdownMenuItem(value: 'has', child: Text('Has Labs')),
+                      DropdownMenuItem(value: 'none', child: Text('No Labs')),
+                    ],
+                    onChanged: (val) => setState(() => _labFilter = val),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),

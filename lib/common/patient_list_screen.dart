@@ -268,7 +268,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
     // Get filter parameters once
     final staffId = _currentStaff?['medicalstaffid'];
     final searchQuery = _filters['search']?.toString().toLowerCase() ?? '';
-    final showLabNotRecorded = _filters['showLabNotRecorded'] == true;
+    var labFilter = _filters['labFilter'];
+    if (labFilter == null && _filters['showLabNotRecorded'] == true) {
+      labFilter = 'none';
+    }
     final currentMonth = DateFormat('MMMM').format(DateTime.now());
 
     // Single iteration with combined conditions
@@ -313,11 +316,17 @@ class _PatientListScreenState extends State<PatientListScreen> {
         }
       }
 
-      // 4. Lab Not Recorded Filter
-      if (showLabNotRecorded) {
+      // 4. Monthly Labs Filter
+      if (labFilter != null) {
         final lastBw = patient['lastbwcollected']?.toString() ?? '';
-        if (lastBw == currentMonth) {
-          return false;
+        if (labFilter == 'has') {
+          if (lastBw != currentMonth) {
+            return false;
+          }
+        } else if (labFilter == 'none') {
+          if (lastBw == currentMonth) {
+            return false;
+          }
         }
       }
 
@@ -822,7 +831,11 @@ class _PatientListScreenState extends State<PatientListScreen> {
   String _labelForFilter(String key, dynamic value) {
     switch (key) {
       case 'showLabNotRecorded':
-        return 'Lab Not Recorded';
+        return 'Labs: No Labs';
+      case 'labFilter':
+        if (value == 'has') return 'Labs: Has Labs';
+        if (value == 'none') return 'Labs: No Labs';
+        return 'Labs: Any';
       case 'vascularFilter':
         if (value == 'has') return 'Has Doppler';
         if (value == 'none') return 'No Doppler';
