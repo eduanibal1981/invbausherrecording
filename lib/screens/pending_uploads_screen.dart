@@ -58,8 +58,8 @@ class _PendingUploadsScreenState extends State<PendingUploadsScreen> {
               padding: const EdgeInsets.only(right: 16.0),
               child: _uploadService.isProcessing
                   ? const SizedBox(
-                      width: 20,
-                      height: 20,
+                      width: 40,
+                      height: 40,
                       child: CircularProgressIndicator(
                         color: Colors.white,
                         strokeWidth: 2,
