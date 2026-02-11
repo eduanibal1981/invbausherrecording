@@ -205,11 +205,18 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
       // Remove staffid from the groupsofpatients table
       await Supabase.instance.client
           .from('groupsofpatients')
-          .update({'staffid': null, 'ismain': null})
+          .update({'staffid': null, 'ismain': false})
           .match({'ghall': hall, 'gshift': shift, 'gday': day});
 
       // Sync patient assignments
       await Supabase.instance.client.rpc('sync_all_patients_staffid');
+
+      // Safety cleanup: ensure stale nurse IDs are removed for this slot.
+      await Supabase.instance.client
+          .from('patients')
+          .update({'nstaffid': null})
+          .match({'hall_main': hall, 'day_main': day, 'shift_main': shift})
+          .eq('nstaffid', staffId);
 
       // Refresh data
       await _fetchData();
