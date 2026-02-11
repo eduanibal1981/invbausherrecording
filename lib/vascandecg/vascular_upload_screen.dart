@@ -11,11 +11,15 @@ import '../services/background_upload_service.dart';
 class VascularUploadScreen extends StatefulWidget {
   final Map<String, dynamic> patient;
   final String? staffRole;
+  final List<String>? initialSharedPaths;
+  final String? entrySourceLabel;
 
   const VascularUploadScreen({
     super.key,
     required this.patient,
     this.staffRole,
+    this.initialSharedPaths,
+    this.entrySourceLabel,
   });
 
   @override
@@ -44,9 +48,21 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
   @override
   void initState() {
     super.initState();
+    _seedInitialSharedFiles();
     _loadCurrentVaccess();
     _fetchUploadedImages();
     _uploadService.addListener(_onUploadServiceChanged);
+  }
+
+  void _seedInitialSharedFiles() {
+    final initialPaths = widget.initialSharedPaths;
+    if (initialPaths == null || initialPaths.isEmpty) return;
+
+    final seen = <String>{};
+    _selectedFiles = initialPaths
+        .where((path) => path.trim().isNotEmpty && seen.add(path))
+        .map((path) => XFile(path))
+        .toList();
   }
 
   @override

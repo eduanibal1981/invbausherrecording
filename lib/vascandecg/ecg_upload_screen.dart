@@ -10,8 +10,16 @@ import '../services/background_upload_service.dart';
 class EcgUploadScreen extends StatefulWidget {
   final Map<String, dynamic> patient;
   final String? staffRole;
+  final List<String>? initialSharedPaths;
+  final String? entrySourceLabel;
 
-  const EcgUploadScreen({super.key, required this.patient, this.staffRole});
+  const EcgUploadScreen({
+    super.key,
+    required this.patient,
+    this.staffRole,
+    this.initialSharedPaths,
+    this.entrySourceLabel,
+  });
 
   @override
   State<EcgUploadScreen> createState() => _EcgUploadScreenState();
@@ -35,8 +43,20 @@ class _EcgUploadScreenState extends State<EcgUploadScreen> {
   @override
   void initState() {
     super.initState();
+    _seedInitialSharedFiles();
     _fetchUploadedImages();
     _uploadService.addListener(_onUploadServiceChanged);
+  }
+
+  void _seedInitialSharedFiles() {
+    final initialPaths = widget.initialSharedPaths;
+    if (initialPaths == null || initialPaths.isEmpty) return;
+
+    final seen = <String>{};
+    _selectedFiles = initialPaths
+        .where((path) => path.trim().isNotEmpty && seen.add(path))
+        .map((path) => XFile(path))
+        .toList();
   }
 
   @override
