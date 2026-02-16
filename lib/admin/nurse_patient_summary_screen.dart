@@ -15,6 +15,23 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
   late Future<List<Map<String, dynamic>>> _summaryFuture;
   String? _selectedHall; // null means 'All'
   List<String> _availableHalls = [];
+  final int _selectedYear = DateTime.now().year;
+  late String _selectedMonth;
+
+  static const List<String> _monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
 
   // Achievement target (default 20, loaded from SharedPreferences)
   static const String _achievementTargetKey = 'achievement_target';
@@ -23,6 +40,7 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedMonth = _monthNames[DateTime.now().month - 1];
     _loadSettingsAndFetchData();
   }
 
@@ -41,9 +59,13 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
 
   Future<List<Map<String, dynamic>>> _fetchSummary() async {
     try {
-      final response = await Supabase.instance.client
-          .from('nurse_patient_summary')
-          .select();
+      final response = await Supabase.instance.client.rpc(
+        'get_nurse_patient_summary',
+        params: {
+          'in_target_year': _selectedYear,
+          'in_target_month': _selectedMonth,
+        },
+      );
 
       final List<Map<String, dynamic>> data = List<Map<String, dynamic>>.from(
         response as List,
@@ -107,8 +129,20 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
 
       return filteredData;
     } catch (e) {
+      if (e.toString().contains('get_nurse_patient_summary')) {
+        throw Exception(
+          'Database function get_nurse_patient_summary is missing. '
+          'Apply the latest migration first.',
+        );
+      }
       throw Exception('Error loading summary: $e');
     }
+  }
+
+  List<String> _selectableMonthsForCurrentYear() {
+    final currentMonthIndex = DateTime.now().month;
+    final available = _monthNames.sublist(0, currentMonthIndex);
+    return available.reversed.toList();
   }
 
   bool _isOnLeaveNurseRow(
@@ -223,60 +257,129 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
 
           return Column(
             children: [
-              // Hall Filter
+              // Filters
               Container(
                 padding: const EdgeInsets.all(16),
                 color: Colors.teal.shade50,
-                child: Row(
+                child: Column(
                   children: [
-                    const Icon(Icons.filter_list, color: Colors.teal),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Filter by Hall:',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedHall,
-                        decoration: InputDecoration(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
+                    Row(
+                      children: [
+                        const Icon(Icons.calendar_month, color: Colors.teal),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Month:',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedMonth,
+                            decoration: InputDecoration(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                              isDense: true,
+                            ),
+                            items: _selectableMonthsForCurrentYear()
+                                .map(
+                                  (month) => DropdownMenuItem(
+                                    value: month,
+                                    child: Text(month),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              if (value == null || value == _selectedMonth) {
+                                return;
+                              }
+                              setState(() {
+                                _selectedMonth = value;
+                                _selectedHall = null;
+                                _summaryFuture = _fetchSummary();
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
                             vertical: 8,
                           ),
-                          border: OutlineInputBorder(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
                             borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.teal.shade200),
                           ),
-                          filled: true,
-                          fillColor: Colors.white,
-                          isDense: true,
-                        ),
-                        items: [
-                          const DropdownMenuItem<String>(
-                            value: null,
-                            child: Text('All Halls'),
-                          ),
-                          ..._availableHalls.map(
-                            (hall) => DropdownMenuItem(
-                              value: hall,
-                              child: Text(hall),
+                          child: Text(
+                            '$_selectedYear',
+                            style: TextStyle(
+                              color: Colors.teal.shade800,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ],
-                        onChanged: (value) {
-                          setState(() => _selectedHall = value);
-                        },
-                      ),
+                        ),
+                      ],
                     ),
-                    // Reset button - shows only when a hall is selected
-                    if (_selectedHall != null)
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.red),
-                        tooltip: 'Reset to All Halls',
-                        onPressed: () {
-                          setState(() => _selectedHall = null);
-                        },
-                      ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.filter_list, color: Colors.teal),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Hall:',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedHall,
+                            decoration: InputDecoration(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                              isDense: true,
+                            ),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: null,
+                                child: Text('All Halls'),
+                              ),
+                              ..._availableHalls.map(
+                                (hall) => DropdownMenuItem(
+                                  value: hall,
+                                  child: Text(hall),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              setState(() => _selectedHall = value);
+                            },
+                          ),
+                        ),
+                        if (_selectedHall != null)
+                          IconButton(
+                            icon: const Icon(Icons.close, color: Colors.red),
+                            tooltip: 'Reset to All Halls',
+                            onPressed: () {
+                              setState(() => _selectedHall = null);
+                            },
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -475,6 +578,7 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
           _buildTotalMetric('Patients', '$totalPatients'),
           _buildTotalMetric('BW Entered', '$bwEntered'),
           _buildTotalMetric('Achievement', '${totalPct.toStringAsFixed(1)}%'),
+          _buildTotalMetric('Period', '$_selectedMonth $_selectedYear'),
         ],
       ),
     );

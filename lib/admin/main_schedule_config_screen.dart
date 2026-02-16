@@ -16,6 +16,7 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
   bool _isLoading = true;
   bool _isSyncing = false;
   String? _expandedHall; // Track which hall is expanded (accordion behavior)
+  final Set<String> _savingCollectionKeys = {};
 
   @override
   void initState() {
@@ -198,6 +199,93 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
       }
     } finally {
       if (mounted) setState(() => _isSyncing = false);
+    }
+  }
+
+  String _scheduleKey(String hall, String day, String shift) =>
+      '$hall|$day|$shift';
+
+  DateTime? _parseDate(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+    return DateTime.tryParse(text);
+  }
+
+  String _formatDateForDb(DateTime date) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  String _formatDateForDisplay(DateTime date) {
+    final d = date.day.toString().padLeft(2, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final y = date.year.toString();
+    return '$d/$m/$y';
+  }
+
+  Future<void> _updateCollectionFields(
+    String hall,
+    String day,
+    String shift, {
+    bool? isCollected,
+    DateTime? collectionDate,
+    bool clearDate = false,
+  }) async {
+    if (isCollected == null && collectionDate == null && !clearDate) return;
+
+    final key = _scheduleKey(hall, day, shift);
+    setState(() => _savingCollectionKeys.add(key));
+
+    try {
+      final updates = <String, dynamic>{};
+      if (isCollected != null) updates['ismcollected'] = isCollected;
+      if (clearDate) {
+        updates['collectiontime_thismonth'] = null;
+      } else if (collectionDate != null) {
+        updates['collectiontime_thismonth'] = _formatDateForDb(collectionDate);
+      }
+
+      await Supabase.instance.client
+          .from('groupsofpatients')
+          .update(updates)
+          .eq('ghall', hall)
+          .eq('gday', day)
+          .eq('gshift', shift);
+
+      if (!mounted) return;
+      setState(() {
+        for (final list in [_mainSchedules, _allGroups]) {
+          final idx = list.indexWhere(
+            (g) =>
+                g['ghall'] == hall && g['gday'] == day && g['gshift'] == shift,
+          );
+          if (idx == -1) continue;
+          if (isCollected != null) list[idx]['ismcollected'] = isCollected;
+          if (clearDate) {
+            list[idx]['collectiontime_thismonth'] = null;
+          } else if (collectionDate != null) {
+            list[idx]['collectiontime_thismonth'] = _formatDateForDb(
+              collectionDate,
+            );
+          }
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating collection info: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _savingCollectionKeys.remove(key));
+      }
     }
   }
 
@@ -430,7 +518,7 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             subtitle: Text(
-              '${schedules.length} schedules • $totalPatients patients',
+              '${schedules.length} schedules - $totalPatients patients',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
             children: schedules.map((schedule) {
@@ -438,45 +526,166 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
               final shift = schedule['gshift'] ?? '';
               final staffId = schedule['staffid'];
               final patientCount = schedule['gcount'] ?? 0;
+              final isCollected = schedule['ismcollected'] == true;
+              final collectionDate = _parseDate(
+                schedule['collectiontime_thismonth'],
+              );
+              final scheduleKey = _scheduleKey(hall, day, shift);
+              final isSavingCollection = _savingCollectionKeys.contains(
+                scheduleKey,
+              );
 
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 4,
+              return Container(
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: Colors.grey.shade200)),
                 ),
-                leading: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: shift == 'AM'
-                        ? Colors.orange.shade100
-                        : Colors.indigo.shade100,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Icon(
-                    shift == 'AM' ? Icons.wb_sunny : Icons.nightlight_round,
-                    color: shift == 'AM'
-                        ? Colors.orange.shade700
-                        : Colors.indigo.shade700,
-                    size: 20,
-                  ),
-                ),
-                title: Text(
-                  '$day - $shift',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-                subtitle: Text(
-                  '$patientCount patients${staffId != null ? ' • Nurse assigned' : ' • No nurse'}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: staffId != null
-                        ? Colors.green.shade700
-                        : Colors.orange.shade700,
-                  ),
-                ),
-                trailing: IconButton(
-                  icon: Icon(Icons.remove_circle, color: Colors.red.shade400),
-                  onPressed: () => _removeMainSchedule(hall, day, shift),
-                  tooltip: 'Remove from main schedules',
+                child: Column(
+                  children: [
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 4,
+                      ),
+                      leading: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: shift == 'AM'
+                              ? Colors.orange.shade100
+                              : Colors.indigo.shade100,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(
+                          shift == 'AM'
+                              ? Icons.wb_sunny
+                              : Icons.nightlight_round,
+                          color: shift == 'AM'
+                              ? Colors.orange.shade700
+                              : Colors.indigo.shade700,
+                          size: 20,
+                        ),
+                      ),
+                      title: Text(
+                        '$day - $shift',
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      subtitle: Text(
+                        '$patientCount patients${staffId != null ? ' - Nurse assigned' : ' - No nurse'}${isCollected ? ' - Collected' : ''}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: staffId != null
+                              ? Colors.green.shade700
+                              : Colors.orange.shade700,
+                        ),
+                      ),
+                      trailing: IconButton(
+                        icon: Icon(
+                          Icons.remove_circle,
+                          color: Colors.red.shade400,
+                        ),
+                        onPressed: () => _removeMainSchedule(hall, day, shift),
+                        tooltip: 'Remove from main schedules',
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(72, 0, 16, 10),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: isSavingCollection
+                                    ? null
+                                    : () async {
+                                        final now = DateTime.now();
+                                        final firstDate = DateTime(
+                                          now.year,
+                                          now.month,
+                                          1,
+                                        );
+                                        final lastDate = DateTime(
+                                          now.year,
+                                          now.month + 1,
+                                          0,
+                                        );
+                                        var initialDate = collectionDate ?? now;
+                                        if (initialDate.isBefore(firstDate) ||
+                                            initialDate.isAfter(lastDate)) {
+                                          initialDate = now;
+                                        }
+
+                                        final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: initialDate,
+                                          firstDate: firstDate,
+                                          lastDate: lastDate,
+                                          helpText:
+                                              'Select collection date (this month)',
+                                        );
+                                        if (picked == null) return;
+
+                                        await _updateCollectionFields(
+                                          hall,
+                                          day,
+                                          shift,
+                                          collectionDate: picked,
+                                        );
+                                      },
+                                icon: const Icon(Icons.event, size: 18),
+                                label: Text(
+                                  collectionDate == null
+                                      ? 'Set collection date (this month)'
+                                      : 'Date: ${_formatDateForDisplay(collectionDate)}',
+                                ),
+                              ),
+                            ),
+                            if (collectionDate != null)
+                              IconButton(
+                                tooltip: 'Clear date',
+                                onPressed: isSavingCollection
+                                    ? null
+                                    : () => _updateCollectionFields(
+                                        hall,
+                                        day,
+                                        shift,
+                                        clearDate: true,
+                                      ),
+                                icon: const Icon(Icons.clear, size: 18),
+                              ),
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: isCollected,
+                                  onChanged: isSavingCollection
+                                      ? null
+                                      : (value) => _updateCollectionFields(
+                                          hall,
+                                          day,
+                                          shift,
+                                          isCollected: value ?? false,
+                                        ),
+                                ),
+                                const Text('Collected'),
+                              ],
+                            ),
+                            if (isSavingCollection)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               );
             }).toList(),
