@@ -171,10 +171,6 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
       setState(() => _currentSyncStep = 'Updating patient schedules...');
       await client.rpc('update_patient_schedule');
 
-      // Step 7: Update Staff assignments
-      setState(() => _currentSyncStep = 'Syncing staff assignments...');
-      await client.rpc('sync_all_patients_staffid');
-
       // Complete!
       setState(() => _currentSyncStep = 'Sync Complete!');
 

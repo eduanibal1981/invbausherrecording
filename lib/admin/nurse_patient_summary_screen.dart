@@ -55,7 +55,9 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
           .select('medicalstaffid, name, fullname')
           .eq('staffrole', 'Nurse')
           .eq('is_on_leave', true);
-      final onLeaveRows = List<Map<String, dynamic>>.from(onLeaveResponse as List);
+      final onLeaveRows = List<Map<String, dynamic>>.from(
+        onLeaveResponse as List,
+      );
       final onLeaveIds = <int>{};
       final onLeaveNames = <String>{};
       for (final row in onLeaveRows) {
@@ -63,7 +65,10 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
         if (id != null) onLeaveIds.add(id);
         final name = (row['name'] ?? '').toString().trim().toLowerCase();
         if (name.isNotEmpty) onLeaveNames.add(name);
-        final fullName = (row['fullname'] ?? '').toString().trim().toLowerCase();
+        final fullName = (row['fullname'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
         if (fullName.isNotEmpty) onLeaveNames.add(fullName);
       }
 
@@ -177,16 +182,44 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
           }
 
           final allData = snapshot.data!;
+          Map<String, dynamic>? totalRow;
+          for (final row in allData) {
+            if (row['nurse_name'] == 'TOTAL') {
+              totalRow = row;
+              break;
+            }
+          }
 
-          // Filter data by selected hall
-          final data = _selectedHall == null
-              ? allData
-              : allData.where((row) {
-                  if (row['nurse_name'] == 'TOTAL')
-                    return false; // Hide TOTAL when filtering
-                  final groups = row['assigned_groups']?.toString() ?? '';
-                  return groups.contains(_selectedHall!);
-                }).toList();
+          var nurseRows = allData
+              .where((row) => row['nurse_name'] != 'TOTAL')
+              .toList();
+
+          if (_selectedHall != null) {
+            nurseRows = nurseRows.where((row) {
+              final groups = row['assigned_groups']?.toString() ?? '';
+              return groups.contains(_selectedHall!);
+            }).toList();
+          }
+
+          nurseRows.sort((a, b) {
+            final pctA = _calculateAchievementPct(a);
+            final pctB = _calculateAchievementPct(b);
+            final pctCompare = pctB.compareTo(pctA);
+            if (pctCompare != 0) return pctCompare;
+
+            final enteredA =
+                int.tryParse(a['bw_entered_this_month']?.toString() ?? '0') ??
+                0;
+            final enteredB =
+                int.tryParse(b['bw_entered_this_month']?.toString() ?? '0') ??
+                0;
+            final enteredCompare = enteredB.compareTo(enteredA);
+            if (enteredCompare != 0) return enteredCompare;
+
+            final nameA = (a['nurse_name'] ?? '').toString().toLowerCase();
+            final nameB = (b['nurse_name'] ?? '').toString().toLowerCase();
+            return nameA.compareTo(nameB);
+          });
 
           return Column(
             children: [
@@ -247,133 +280,220 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                   ],
                 ),
               ),
+              if (totalRow != null) _buildTotalSummaryCard(totalRow),
               // Data Table
               Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.vertical,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: DataTable(
-                        headingRowColor: WidgetStateProperty.all(
-                          Colors.teal.shade50,
-                        ),
-                        dataRowColor: WidgetStateProperty.resolveWith<Color?>((
-                          Set<WidgetState> states,
-                        ) {
-                          return null; // Default
-                        }),
-                        border: TableBorder.all(
-                          color: Colors.grey.shade300,
-                          width: 1,
-                          borderRadius: BorderRadius.circular(8),
-                          style: BorderStyle.none,
-                        ),
-                        columns: const [
-                          DataColumn(
-                            label: Text(
-                              'Nurse',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'Achievement',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            numeric: true,
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'Assigned Groups',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'Total Patients',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            numeric: true,
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'BW Entered',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            numeric: true,
-                          ),
-                        ],
-                        rows: data.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final row = entry.value;
-                          final bool isTotal = row['nurse_name'] == 'TOTAL';
-
-                          // Style for TOTAL row
-                          final TextStyle textStyle = isTotal
-                              ? const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Colors.black,
-                                )
-                              : const TextStyle(fontSize: 14);
-
-                          final Color? rowColor = isTotal
-                              ? Colors.amber.shade100
-                              : (index % 2 == 0
+                child: nurseRows.isEmpty
+                    ? const Center(
+                        child: Text('No nurses match the selected filter.'),
+                      )
+                    : SingleChildScrollView(
+                        scrollDirection: Axis.vertical,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: DataTable(
+                              headingRowColor: WidgetStateProperty.all(
+                                Colors.teal.shade50,
+                              ),
+                              dataRowColor:
+                                  WidgetStateProperty.resolveWith<Color?>((
+                                    Set<WidgetState> states,
+                                  ) {
+                                    return null; // Default
+                                  }),
+                              border: TableBorder.all(
+                                color: Colors.grey.shade300,
+                                width: 1,
+                                borderRadius: BorderRadius.circular(8),
+                                style: BorderStyle.none,
+                              ),
+                              columns: const [
+                                DataColumn(
+                                  label: Text(
+                                    '#',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  numeric: true,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    'Nurse',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    'Achievement',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  numeric: true,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    'Assigned Groups',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    'Total Patients',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  numeric: true,
+                                ),
+                                DataColumn(
+                                  label: Text(
+                                    'BW Entered',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  numeric: true,
+                                ),
+                              ],
+                              rows: nurseRows.asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final row = entry.value;
+                                const textStyle = TextStyle(fontSize: 14);
+                                final rowColor = index % 2 == 0
                                     ? Colors.grey.shade50
-                                    : Colors.white);
+                                    : Colors.white;
 
-                          return DataRow(
-                            color: WidgetStateProperty.all(rowColor),
-                            cells: [
-                              DataCell(
-                                Text(
-                                  row['nurse_name']?.toString() ?? '-',
-                                  style: textStyle,
-                                ),
-                              ),
-                              DataCell(
-                                _buildPercentageCell(
-                                  row['bw_entered_this_month'],
-                                  row['total_patients'],
-                                  textStyle,
-                                  isTotal,
-                                ),
-                              ),
-                              DataCell(
-                                _buildAssignedGroupsCell(
-                                  row['assigned_groups'],
-                                  row['nurse_name'],
-                                  isTotal,
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  row['total_patients']?.toString() ?? '0',
-                                  style: textStyle,
-                                ),
-                              ),
-                              DataCell(
-                                _buildBwEnteredCell(
-                                  row['bw_entered_this_month'],
-                                  row['total_patients'],
-                                  textStyle,
-                                  isTotal,
-                                ),
-                              ),
-                            ],
-                          );
-                        }).toList(),
+                                return DataRow(
+                                  color: WidgetStateProperty.all(rowColor),
+                                  cells: [
+                                    DataCell(
+                                      Text('${index + 1}', style: textStyle),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        row['nurse_name']?.toString() ?? '-',
+                                        style: textStyle,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      _buildPercentageCell(
+                                        row['bw_entered_this_month'],
+                                        row['total_patients'],
+                                        textStyle,
+                                        false,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      _buildAssignedGroupsCell(
+                                        row['assigned_groups'],
+                                        row['nurse_name'],
+                                        false,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        row['total_patients']?.toString() ??
+                                            '0',
+                                        style: textStyle,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      _buildBwEnteredCell(
+                                        row['bw_entered_this_month'],
+                                        row['total_patients'],
+                                        textStyle,
+                                        false,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                ),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+
+  double _calculateAchievementPct(Map<String, dynamic> row) {
+    final enteredCount =
+        int.tryParse(row['bw_entered_this_month']?.toString() ?? '0') ?? 0;
+    if (_achievementTarget <= 0) return 0;
+    return (enteredCount / _achievementTarget) * 100;
+  }
+
+  Widget _buildTotalSummaryCard(Map<String, dynamic> row) {
+    final int totalPatients =
+        int.tryParse(row['total_patients']?.toString() ?? '0') ?? 0;
+    final int bwEntered =
+        int.tryParse(row['bw_entered_this_month']?.toString() ?? '0') ?? 0;
+    final double totalPct = totalPatients > 0
+        ? (bwEntered / totalPatients) * 100
+        : 0;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.shade300),
+      ),
+      child: Wrap(
+        spacing: 20,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.summarize, color: Colors.amber.shade800, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Overall Total',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.amber.shade900,
+                ),
+              ),
+            ],
+          ),
+          _buildTotalMetric('Patients', '$totalPatients'),
+          _buildTotalMetric('BW Entered', '$bwEntered'),
+          _buildTotalMetric('Achievement', '${totalPct.toStringAsFixed(1)}%'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTotalMetric(String label, String value) {
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(color: Colors.black87, fontSize: 13),
+        children: [
+          TextSpan(
+            text: '$label: ',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          TextSpan(
+            text: value,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ],
       ),
     );
   }

@@ -14,16 +14,21 @@ enum PatientFilterMode {
   none, // Normal view - no special filter
   unassigned, // Show only patients with no nurse assigned
   nurseOnLeave, // Show only patients whose nurse is on leave
+  assignedToNurse, // Show only patients assigned to a specific nurse
 }
 
 class PatientListScreen extends StatefulWidget {
   final PatientFilterMode filterMode;
   final List<int>? nurseOnLeaveIds;
+  final int? assignedNurseId;
+  final String? assignedNurseName;
 
   const PatientListScreen({
     super.key,
     this.filterMode = PatientFilterMode.none,
     this.nurseOnLeaveIds,
+    this.assignedNurseId,
+    this.assignedNurseName,
   });
 
   @override
@@ -290,6 +295,13 @@ class _PatientListScreenState extends State<PatientListScreen> {
             !widget.nurseOnLeaveIds!.contains(nurseId)) {
           return false;
         }
+      } else if (widget.filterMode == PatientFilterMode.assignedToNurse) {
+        // Only show patients assigned to the selected nurse
+        final nurseId = patient['nstaffid'];
+        if (widget.assignedNurseId == null ||
+            nurseId != widget.assignedNurseId) {
+          return false;
+        }
       }
 
       // 1. Schedule Filters
@@ -376,6 +388,11 @@ class _PatientListScreenState extends State<PatientListScreen> {
       return 'Unassigned Patients';
     } else if (widget.filterMode == PatientFilterMode.nurseOnLeave) {
       return 'Patients (Nurse On Leave)';
+    } else if (widget.filterMode == PatientFilterMode.assignedToNurse) {
+      final nurseName = widget.assignedNurseName?.trim();
+      return (nurseName != null && nurseName.isNotEmpty)
+          ? '$nurseName Patients'
+          : 'Nurse Patients';
     } else if (_currentStaff != null) {
       return 'Hi ${_currentStaff!['name']}';
     }

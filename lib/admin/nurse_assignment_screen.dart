@@ -309,6 +309,19 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
     }
   }
 
+  void _openNursePatients(int staffId, String nurseName) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PatientListScreen(
+          filterMode: PatientFilterMode.assignedToNurse,
+          assignedNurseId: staffId,
+          assignedNurseName: nurseName,
+        ),
+      ),
+    );
+  }
+
   void _showAddAssignmentDialog(int staffId, String nurseName) {
     // Get currently assigned slots for this nurse
     final currentAssignments = _nurseAssignments[staffId] ?? [];
@@ -775,16 +788,31 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
                         Row(
                           children: [
                             Flexible(
-                              child: Text(
-                                nurseName,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: isOnLeave
-                                      ? Colors.orange.shade900
-                                      : Colors.teal.shade900,
+                              child: InkWell(
+                                onTap: () =>
+                                    _openNursePatients(staffId, nurseName),
+                                borderRadius: BorderRadius.circular(4),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 2,
+                                    horizontal: 2,
+                                  ),
+                                  child: Text(
+                                    nurseName,
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: isOnLeave
+                                          ? Colors.orange.shade900
+                                          : Colors.teal.shade900,
+                                      decoration: TextDecoration.underline,
+                                      decorationColor: isOnLeave
+                                          ? Colors.orange.shade900
+                                          : Colors.teal.shade900,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             if (isOnLeave)
@@ -816,6 +844,14 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
                             color: isOnLeave
                                 ? Colors.orange.shade600
                                 : Colors.teal.shade600,
+                          ),
+                        ),
+                        Text(
+                          'Tap name to view patients',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.blue.shade700,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
