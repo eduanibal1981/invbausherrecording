@@ -45,17 +45,37 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
           .from('nurse_patient_summary')
           .select();
 
-      // Sort logic if needed, but assuming database/view might return in order or we sort manually
-      // We want TOTAL at the top if possible, rest by percentage or name
       final List<Map<String, dynamic>> data = List<Map<String, dynamic>>.from(
         response as List,
       );
 
-      // Optional: Sort so TOTAL is first, then others by percentage descending
-      data.sort((a, b) {
+      // Load nurses currently marked on leave to exclude them from ranking rows.
+      final onLeaveResponse = await Supabase.instance.client
+          .from('staff')
+          .select('medicalstaffid, name, fullname')
+          .eq('staffrole', 'Nurse')
+          .eq('is_on_leave', true);
+      final onLeaveRows = List<Map<String, dynamic>>.from(onLeaveResponse as List);
+      final onLeaveIds = <int>{};
+      final onLeaveNames = <String>{};
+      for (final row in onLeaveRows) {
+        final id = int.tryParse((row['medicalstaffid'] ?? '').toString());
+        if (id != null) onLeaveIds.add(id);
+        final name = (row['name'] ?? '').toString().trim().toLowerCase();
+        if (name.isNotEmpty) onLeaveNames.add(name);
+        final fullName = (row['fullname'] ?? '').toString().trim().toLowerCase();
+        if (fullName.isNotEmpty) onLeaveNames.add(fullName);
+      }
+
+      final filteredData = data.where((row) {
+        if (row['nurse_name'] == 'TOTAL') return true;
+        return !_isOnLeaveNurseRow(row, onLeaveIds, onLeaveNames);
+      }).toList();
+
+      // Sort so TOTAL is first, then others by percentage descending.
+      filteredData.sort((a, b) {
         if (a['nurse_name'] == 'TOTAL') return -1;
         if (b['nurse_name'] == 'TOTAL') return 1;
-        // Compare by percentage descending
         final double? pctA = double.tryParse(a['bw_percentage'].toString());
         final double? pctB = double.tryParse(b['bw_percentage'].toString());
         if (pctA != null && pctB != null) {
@@ -64,12 +84,11 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
         return 0;
       });
 
-      // Extract unique halls from assigned_groups
+      // Extract unique halls from visible rows.
       final halls = <String>{};
-      for (var row in data) {
+      for (var row in filteredData) {
         final groups = row['assigned_groups']?.toString() ?? '';
         if (groups.isNotEmpty) {
-          // Format: "Hall-Day-Shift | Hall-Day-Shift"
           final groupList = groups.split(' | ');
           for (var group in groupList) {
             final parts = group.split('-');
@@ -81,10 +100,30 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
       }
       _availableHalls = halls.toList()..sort();
 
-      return data;
+      return filteredData;
     } catch (e) {
       throw Exception('Error loading summary: $e');
     }
+  }
+
+  bool _isOnLeaveNurseRow(
+    Map<String, dynamic> row,
+    Set<int> onLeaveIds,
+    Set<String> onLeaveNames,
+  ) {
+    final nurseName = (row['nurse_name'] ?? '').toString().trim().toLowerCase();
+    if (nurseName.isNotEmpty && onLeaveNames.contains(nurseName)) {
+      return true;
+    }
+
+    for (final key in ['medicalstaffid', 'staffid', 'nurse_id', 'nstaffid']) {
+      final id = int.tryParse((row[key] ?? '').toString());
+      if (id != null && onLeaveIds.contains(id)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   @override

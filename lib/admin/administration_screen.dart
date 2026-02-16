@@ -101,7 +101,7 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
 
       // Step 1: Fetch from Google Sheets
       setState(
-        () => _currentSyncStep = '📥 Fetching patients from Google Sheets...',
+        () => _currentSyncStep = 'Fetching patients from Google Sheets...',
       );
       final response = await http.get(Uri.parse(_googleSheetsUrl));
       if (response.statusCode != 200) {
@@ -112,7 +112,7 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
       final List<dynamic> uniqueList = json.decode(response.body);
 
       // Step 2: Load existing patients
-      setState(() => _currentSyncStep = '📋 Checking existing records...');
+      setState(() => _currentSyncStep = 'Checking existing records...');
       final List<dynamic> existingPatients = await client
           .from('patients')
           .select('pcid');
@@ -138,14 +138,13 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
       // Step 3: Insert new patients
       if (toInsert.isNotEmpty) {
         setState(
-          () =>
-              _currentSyncStep = '➕ Adding ${toInsert.length} new patients...',
+          () => _currentSyncStep = 'Adding ${toInsert.length} new patients...',
         );
         await client.from('patients').insert(toInsert);
       }
 
       // Step 4: Update patient statuses
-      setState(() => _currentSyncStep = '🔄 Updating patient statuses...');
+      setState(() => _currentSyncStep = 'Updating patient statuses...');
       if (sheetIds.isNotEmpty) {
         await client
             .from('patients')
@@ -157,16 +156,8 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
             .not('pcid', 'in', '(${sheetIds.join(",")})');
       }
 
-      // Step 5: Update Patient Schedule RPC
-      setState(() => _currentSyncStep = '📅 Updating patient schedules...');
-      await client.rpc('update_patient_schedule');
-
-      // Step 6: Update Staff assignments
-      setState(() => _currentSyncStep = '👥 Syncing staff assignments...');
-      await client.rpc('sync_all_patients_staffid');
-
-      // Step 7: Sync schedules via Edge Function
-      setState(() => _currentSyncStep = '⏰ Syncing schedule data...');
+      // Step 5: Sync schedules via Edge Function
+      setState(() => _currentSyncStep = 'Syncing schedule data...');
       final session = client.auth.currentSession;
       if (session != null) {
         final res = await client.functions.invoke(
@@ -176,8 +167,16 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
         schedulesInserted = res.data?['inserted'] ?? 0;
       }
 
+      // Step 6: Update Patient Schedule RPC
+      setState(() => _currentSyncStep = 'Updating patient schedules...');
+      await client.rpc('update_patient_schedule');
+
+      // Step 7: Update Staff assignments
+      setState(() => _currentSyncStep = 'Syncing staff assignments...');
+      await client.rpc('sync_all_patients_staffid');
+
       // Complete!
-      setState(() => _currentSyncStep = '✅ Sync Complete!');
+      setState(() => _currentSyncStep = 'Sync Complete!');
 
       if (mounted) {
         await Future.delayed(const Duration(milliseconds: 500));
@@ -190,7 +189,7 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _currentSyncStep = '❌ Error occurred');
+        setState(() => _currentSyncStep = 'Error occurred');
         _showSyncResultDialog(success: false, error: e.toString());
       }
     } finally {
