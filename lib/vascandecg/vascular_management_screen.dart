@@ -257,12 +257,17 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
     int? selectedPcid = _toInt(existing?['pcid']);
     String? selectedType = existing?['ac_type']?.toString();
     bool isCurrent = existing?['is_currentaccess'] == true;
+    String createdHospitalValue =
+        existing?['ac_createdhospital']?.toString() ?? '';
+    String nextHospitalValue =
+        existing?['nextappointment_hospital']?.toString() ?? '';
+    const hospitalSuggestions = <String>[
+      'Royal Hospital',
+      'Khawla Hspital',
+    ];
 
     final fullNameCtrl = TextEditingController(
       text: existing?['ac_fullname']?.toString() ?? '',
-    );
-    final createdHospitalCtrl = TextEditingController(
-      text: existing?['ac_createdhospital']?.toString() ?? '',
     );
     final infectionCountCtrl = TextEditingController(
       text: existing?['infection_count']?.toString() ?? '',
@@ -285,9 +290,6 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
     final otherHospitalCtrl = TextEditingController(
       text: existing?['otherhospitalneeded']?.toString() ?? '',
     );
-    final nextHospitalCtrl = TextEditingController(
-      text: existing?['nextappointment_hospital']?.toString() ?? '',
-    );
     final nextNoteCtrl = TextEditingController(
       text: existing?['nextappointment_note']?.toString() ?? '',
     );
@@ -297,6 +299,39 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
       existing?['nextappointment_date'],
     );
     bool isSaving = false;
+
+    Widget buildHospitalAutocomplete({
+      required String label,
+      required String initialValue,
+      required ValueChanged<String> onChanged,
+    }) {
+      return Autocomplete<String>(
+        initialValue: TextEditingValue(text: initialValue),
+        optionsBuilder: (textEditingValue) {
+          final query = textEditingValue.text.trim().toLowerCase();
+          if (query.isEmpty || isSaving) {
+            return const Iterable<String>.empty();
+          }
+          return hospitalSuggestions.where(
+            (hospital) => hospital.toLowerCase().startsWith(query),
+          );
+        },
+        onSelected: onChanged,
+        optionsMaxHeight: 180,
+        fieldViewBuilder:
+            (context, textController, focusNode, onFieldSubmitted) => TextField(
+              controller: textController,
+              focusNode: focusNode,
+              enabled: !isSaving,
+              onChanged: onChanged,
+              onSubmitted: (_) => onFieldSubmitted(),
+              decoration: InputDecoration(
+                labelText: label,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+      );
+    }
 
     Future<DateTime?> pickDate(DateTime? current, String helpText) async {
       final now = DateTime.now();
@@ -338,21 +373,30 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    initialValue: selectedPcid,
-                    decoration: const InputDecoration(
-                      labelText: 'Patient',
+                  DropdownMenu<int>(
+                    initialSelection: selectedPcid,
+                    enabled: !isSaving && !isEdit,
+                    label: Text(
+                      isEdit ? 'Patient (Not changeable)' : 'Patient',
+                    ),
+                    enableSearch: true,
+                    enableFilter: true,
+                    menuHeight: 320,
+                    inputDecorationTheme: const InputDecorationTheme(
                       border: OutlineInputBorder(),
                     ),
-                    items: activePatients
-                        .map(
-                          (p) => DropdownMenuItem<int>(
-                            value: _toInt(p['pcid']),
-                            child: Text('${p['name']} (${p['pcid']})'),
-                          ),
-                        )
+                    dropdownMenuEntries: activePatients
+                        .map((p) {
+                          final pcid = _toInt(p['pcid']);
+                          if (pcid == null) return null;
+                          return DropdownMenuEntry<int>(
+                            value: pcid,
+                            label: '${p['name']} ($pcid)',
+                          );
+                        })
+                        .whereType<DropdownMenuEntry<int>>()
                         .toList(),
-                    onChanged: isSaving
+                    onSelected: isSaving || isEdit
                         ? null
                         : (value) => setSheetState(() => selectedPcid = value),
                   ),
@@ -385,13 +429,10 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: createdHospitalCtrl,
-                    enabled: !isSaving,
-                    decoration: const InputDecoration(
-                      labelText: 'Created Hospital',
-                      border: OutlineInputBorder(),
-                    ),
+                  buildHospitalAutocomplete(
+                    label: 'Created Hospital',
+                    initialValue: createdHospitalValue,
+                    onChanged: (value) => createdHospitalValue = value,
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -464,18 +505,19 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: retplaseCountCtrl,
-                          enabled: !isSaving,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Re-tPAse Count',
-                            border: OutlineInputBorder(),
+                      if (selectedType == 'PERM_CATH') const SizedBox(width: 8),
+                      if (selectedType == 'PERM_CATH')
+                        Expanded(
+                          child: TextField(
+                            controller: retplaseCountCtrl,
+                            enabled: !isSaving,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Re-tPAse Count',
+                              border: OutlineInputBorder(),
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -559,13 +601,10 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: nextHospitalCtrl,
-                    enabled: !isSaving,
-                    decoration: const InputDecoration(
-                      labelText: 'Next Appointment Hospital',
-                      border: OutlineInputBorder(),
-                    ),
+                  buildHospitalAutocomplete(
+                    label: 'Next Appointment Hospital',
+                    initialValue: nextHospitalValue,
+                    onChanged: (value) => nextHospitalValue = value,
                   ),
                   const SizedBox(height: 10),
                   TextField(
@@ -614,9 +653,9 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                                       ? null
                                       : _formatDate(accessCreationDate!),
                                   'ac_createdhospital':
-                                      createdHospitalCtrl.text.trim().isEmpty
+                                      createdHospitalValue.trim().isEmpty
                                       ? null
-                                      : createdHospitalCtrl.text.trim(),
+                                      : createdHospitalValue.trim(),
                                   'is_currentaccess': isCurrent,
                                   'infection_count': int.tryParse(
                                     infectionCountCtrl.text.trim(),
@@ -628,9 +667,11 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                                   'angioplast_count': int.tryParse(
                                     angioplastCountCtrl.text.trim(),
                                   ),
-                                  'retplase_count': int.tryParse(
-                                    retplaseCountCtrl.text.trim(),
-                                  ),
+                                  'retplase_count': selectedType == 'PERM_CATH'
+                                      ? int.tryParse(
+                                          retplaseCountCtrl.text.trim(),
+                                        )
+                                      : null,
                                   'general_note':
                                       generalNoteCtrl.text.trim().isEmpty
                                       ? null
@@ -648,9 +689,9 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                                       ? null
                                       : _formatDate(nextAppointmentDate!),
                                   'nextappointment_hospital':
-                                      nextHospitalCtrl.text.trim().isEmpty
+                                      nextHospitalValue.trim().isEmpty
                                       ? null
-                                      : nextHospitalCtrl.text.trim(),
+                                      : nextHospitalValue.trim(),
                                   'nextappointment_note':
                                       nextNoteCtrl.text.trim().isEmpty
                                       ? null
