@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'nurse_patient_summary_screen.dart';
 import 'nurse_assignment_screen.dart';
 import 'main_schedule_config_screen.dart';
+import 'lab_requests_screen.dart';
 
 class AdministrationScreen extends StatefulWidget {
   const AdministrationScreen({super.key});
@@ -512,6 +513,22 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
                   );
                 },
                 icon: Icons.calendar_today,
+              ),
+              const Divider(),
+              _buildActionTile(
+                title: 'Lab Requests (Today)',
+                subtitle:
+                    'Show Hall/Day/Shift schedules with collection due today',
+                isLoading: false,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const LabRequestsScreen(),
+                    ),
+                  );
+                },
+                icon: Icons.science_outlined,
               ),
             ],
           ),

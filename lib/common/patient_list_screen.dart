@@ -5,9 +5,11 @@ import 'filter_screen.dart';
 import 'patient_dashboard_screen_v2.dart';
 import '../admin/administration_screen.dart';
 import '../admin/nurse_patient_summary_screen.dart';
+import '../admin/lab_requests_screen.dart';
 import 'about_screen.dart';
 import '../screens/pending_uploads_screen.dart';
 import '../services/background_upload_service.dart';
+import '../vascandecg/vascular_management_screen.dart';
 
 /// Filter mode for patient list when navigating from other screens
 enum PatientFilterMode {
@@ -474,6 +476,30 @@ class _PatientListScreenState extends State<PatientListScreen> {
               icon: const Icon(Icons.more_vert, color: Colors.white),
               onSelected: (value) {
                 if (value == 'refresh') _refreshPatients();
+                if (value == 'uploads') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PendingUploadsScreen(),
+                    ),
+                  );
+                }
+                if (value == 'lab_requests') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const LabRequestsScreen(),
+                    ),
+                  );
+                }
+                if (value == 'vascular_management') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const VascularManagementScreen(),
+                    ),
+                  );
+                }
                 if (value == 'about') {
                   Navigator.push(
                     context,
@@ -515,7 +541,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
                           ),
                           Switch(
                             value: _showMyPatientsOnly,
-                            activeColor: Colors.amber,
+                            activeThumbColor: Colors.amber,
                             onChanged: (val) {
                               setState(() => _showMyPatientsOnly = val);
                               menuSetState(() {});
@@ -546,6 +572,53 @@ class _PatientListScreenState extends State<PatientListScreen> {
                   ),
                   const PopupMenuDivider(),
                 ],
+                PopupMenuItem<String>(
+                  value: 'uploads',
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.cloud_upload_outlined,
+                        color: Colors.blueGrey,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        _pendingUploadCount > 0
+                            ? "Uploads ($_pendingUploadCount)"
+                            : "Uploads",
+                      ),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'lab_requests',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.science_outlined,
+                        color: Colors.blueGrey,
+                        size: 20,
+                      ),
+                      SizedBox(width: 12),
+                      Text("Today Lab Requests"),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'vascular_management',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.monitor_heart,
+                        color: Colors.blueGrey,
+                        size: 20,
+                      ),
+                      SizedBox(width: 12),
+                      Text("Vascular Management"),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
                 const PopupMenuItem<String>(
                   value: 'refresh',
                   child: Row(

@@ -226,27 +226,29 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
     return '$d/$m/$y';
   }
 
-  Future<void> _updateCollectionFields(
+  Future<bool> _updateCollectionFields(
     String hall,
     String day,
     String shift, {
-    bool? isCollected,
-    DateTime? collectionDate,
-    bool clearDate = false,
+    required bool isCollected,
+    DateTime? bwDate,
+    DateTime? pthDate,
+    DateTime? ironDate,
   }) async {
-    if (isCollected == null && collectionDate == null && !clearDate) return;
-
     final key = _scheduleKey(hall, day, shift);
     setState(() => _savingCollectionKeys.add(key));
 
     try {
-      final updates = <String, dynamic>{};
-      if (isCollected != null) updates['ismcollected'] = isCollected;
-      if (clearDate) {
-        updates['collectiontime_thismonth'] = null;
-      } else if (collectionDate != null) {
-        updates['collectiontime_thismonth'] = _formatDateForDb(collectionDate);
-      }
+      final updates = <String, dynamic>{
+        'ismcollected': isCollected,
+        'collectiontime_bw': bwDate == null ? null : _formatDateForDb(bwDate),
+        'collectiontime_pth': pthDate == null
+            ? null
+            : _formatDateForDb(pthDate),
+        'collectiontime_iron': ironDate == null
+            ? null
+            : _formatDateForDb(ironDate),
+      };
 
       await Supabase.instance.client
           .from('groupsofpatients')
@@ -255,7 +257,7 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
           .eq('gday', day)
           .eq('gshift', shift);
 
-      if (!mounted) return;
+      if (!mounted) return true;
       setState(() {
         for (final list in [_mainSchedules, _allGroups]) {
           final idx = list.indexWhere(
@@ -263,16 +265,19 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
                 g['ghall'] == hall && g['gday'] == day && g['gshift'] == shift,
           );
           if (idx == -1) continue;
-          if (isCollected != null) list[idx]['ismcollected'] = isCollected;
-          if (clearDate) {
-            list[idx]['collectiontime_thismonth'] = null;
-          } else if (collectionDate != null) {
-            list[idx]['collectiontime_thismonth'] = _formatDateForDb(
-              collectionDate,
-            );
-          }
+          list[idx]['ismcollected'] = isCollected;
+          list[idx]['collectiontime_bw'] = bwDate == null
+              ? null
+              : _formatDateForDb(bwDate);
+          list[idx]['collectiontime_pth'] = pthDate == null
+              ? null
+              : _formatDateForDb(pthDate);
+          list[idx]['collectiontime_iron'] = ironDate == null
+              ? null
+              : _formatDateForDb(ironDate);
         }
       });
+      return true;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -282,11 +287,224 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
           ),
         );
       }
+      return false;
     } finally {
       if (mounted) {
         setState(() => _savingCollectionKeys.remove(key));
       }
     }
+  }
+
+  Future<void> _showCollectionSetupBottomSheet(
+    String hall,
+    String day,
+    String shift,
+    Map<String, dynamic> schedule,
+  ) async {
+    final key = _scheduleKey(hall, day, shift);
+    if (_savingCollectionKeys.contains(key)) return;
+
+    bool isCollected = schedule['ismcollected'] == true;
+    DateTime? bwDate = _parseDate(schedule['collectiontime_bw']);
+    DateTime? pthDate = _parseDate(schedule['collectiontime_pth']);
+    DateTime? ironDate = _parseDate(schedule['collectiontime_iron']);
+    bool isSaving = false;
+
+    Future<DateTime?> pickDate(DateTime? currentValue, String label) async {
+      final now = DateTime.now();
+      final initialDate = currentValue ?? now;
+      return showDatePicker(
+        context: context,
+        initialDate: initialDate,
+        firstDate: DateTime(now.year - 3, 1, 1),
+        lastDate: DateTime(now.year + 3, 12, 31),
+        helpText: 'Select $label collection date',
+      );
+    }
+
+    Widget buildDateRow(
+      String label,
+      DateTime? value,
+      ValueChanged<DateTime?> onChanged,
+      StateSetter setSheetState,
+    ) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.grey.shade50,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value == null
+                        ? 'No date set'
+                        : _formatDateForDisplay(value),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: value == null
+                          ? Colors.grey.shade600
+                          : Colors.teal.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final picked = await pickDate(value, label);
+                      if (picked == null) return;
+                      setSheetState(() => onChanged(picked));
+                    },
+              icon: const Icon(Icons.event, size: 16),
+              label: const Text('Set'),
+            ),
+            IconButton(
+              tooltip: 'Clear date',
+              onPressed: isSaving || value == null
+                  ? null
+                  : () => setSheetState(() => onChanged(null)),
+              icon: const Icon(Icons.clear, size: 18),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheetState) {
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                14,
+                16,
+                16 + MediaQuery.of(sheetCtx).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$hall - $day - $shift',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Set collection dates by lab type',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    value: isCollected,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: const Text('BW Collected'),
+                    subtitle: const Text(
+                      'Mark Blood Week collection as completed',
+                    ),
+                    onChanged: isSaving
+                        ? null
+                        : (value) =>
+                              setSheetState(() => isCollected = value ?? false),
+                  ),
+                  const SizedBox(height: 6),
+                  buildDateRow('Blood Week', bwDate, (value) {
+                    bwDate = value;
+                  }, setSheetState),
+                  buildDateRow('PTH', pthDate, (value) {
+                    pthDate = value;
+                  }, setSheetState),
+                  buildDateRow('Iron', ironDate, (value) {
+                    ironDate = value;
+                  }, setSheetState),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: isSaving
+                          ? null
+                          : () async {
+                              final navigator = Navigator.of(sheetCtx);
+                              setSheetState(() => isSaving = true);
+                              final success = await _updateCollectionFields(
+                                hall,
+                                day,
+                                shift,
+                                isCollected: isCollected,
+                                bwDate: bwDate,
+                                pthDate: pthDate,
+                                ironDate: ironDate,
+                              );
+
+                              if (!mounted) return;
+                              if (success) {
+                                if (navigator.canPop()) navigator.pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Collection details updated successfully',
+                                    ),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              } else {
+                                setSheetState(() => isSaving = false);
+                              }
+                            },
+                      icon: isSaving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.save),
+                      label: Text(
+                        isSaving ? 'Saving...' : 'Save Collection Details',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   void _showAddDialog() {
@@ -355,7 +573,8 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
               children: [
                 // Hall dropdown
                 DropdownButtonFormField<String>(
-                  value: selectedHall,
+                  key: const ValueKey('hall_dropdown'),
+                  initialValue: selectedHall,
                   decoration: InputDecoration(
                     labelText: 'Hall',
                     border: OutlineInputBorder(
@@ -376,7 +595,8 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
                 const SizedBox(height: 16),
                 // Day dropdown
                 DropdownButtonFormField<String>(
-                  value: selectedDay,
+                  key: ValueKey('day_dropdown_$selectedHall'),
+                  initialValue: selectedDay,
                   decoration: InputDecoration(
                     labelText: 'Day',
                     border: OutlineInputBorder(
@@ -398,7 +618,8 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
                 const SizedBox(height: 16),
                 // Shift dropdown
                 DropdownButtonFormField<String>(
-                  value: selectedShift,
+                  key: ValueKey('shift_dropdown_${selectedHall}_$selectedDay'),
+                  initialValue: selectedShift,
                   decoration: InputDecoration(
                     labelText: 'Shift',
                     border: OutlineInputBorder(
@@ -527,9 +748,6 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
               final staffId = schedule['staffid'];
               final patientCount = schedule['gcount'] ?? 0;
               final isCollected = schedule['ismcollected'] == true;
-              final collectionDate = _parseDate(
-                schedule['collectiontime_thismonth'],
-              );
               final scheduleKey = _scheduleKey(hall, day, shift);
               final isSavingCollection = _savingCollectionKeys.contains(
                 scheduleKey,
@@ -569,7 +787,7 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
                         style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                       subtitle: Text(
-                        '$patientCount patients${staffId != null ? ' - Nurse assigned' : ' - No nurse'}${isCollected ? ' - Collected' : ''}',
+                        '$patientCount patients${staffId != null ? ' - Nurse assigned' : ' - No nurse'}${isCollected ? ' - BW collected' : ''}',
                         style: TextStyle(
                           fontSize: 11,
                           color: staffId != null
@@ -598,80 +816,31 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
                         child: Row(
                           children: [
                             Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: isSavingCollection
-                                    ? null
-                                    : () async {
-                                        final now = DateTime.now();
-                                        final firstDate = DateTime(
-                                          now.year,
-                                          now.month,
-                                          1,
-                                        );
-                                        final lastDate = DateTime(
-                                          now.year,
-                                          now.month + 1,
-                                          0,
-                                        );
-                                        var initialDate = collectionDate ?? now;
-                                        if (initialDate.isBefore(firstDate) ||
-                                            initialDate.isAfter(lastDate)) {
-                                          initialDate = now;
-                                        }
-
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: initialDate,
-                                          firstDate: firstDate,
-                                          lastDate: lastDate,
-                                          helpText:
-                                              'Select collection date (this month)',
-                                        );
-                                        if (picked == null) return;
-
-                                        await _updateCollectionFields(
-                                          hall,
-                                          day,
-                                          shift,
-                                          collectionDate: picked,
-                                        );
-                                      },
-                                icon: const Icon(Icons.event, size: 18),
-                                label: Text(
-                                  collectionDate == null
-                                      ? 'Set collection date (this month)'
-                                      : 'Date: ${_formatDateForDisplay(collectionDate)}',
+                              child: Text(
+                                isCollected
+                                    ? 'BW collected: Yes'
+                                    : 'BW collected: No',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isCollected
+                                      ? Colors.green.shade700
+                                      : Colors.grey.shade700,
                                 ),
                               ),
                             ),
-                            if (collectionDate != null)
-                              IconButton(
-                                tooltip: 'Clear date',
-                                onPressed: isSavingCollection
-                                    ? null
-                                    : () => _updateCollectionFields(
-                                        hall,
-                                        day,
-                                        shift,
-                                        clearDate: true,
-                                      ),
-                                icon: const Icon(Icons.clear, size: 18),
-                              ),
-                            Row(
-                              children: [
-                                Checkbox(
-                                  value: isCollected,
-                                  onChanged: isSavingCollection
-                                      ? null
-                                      : (value) => _updateCollectionFields(
-                                          hall,
-                                          day,
-                                          shift,
-                                          isCollected: value ?? false,
-                                        ),
-                                ),
-                                const Text('Collected'),
-                              ],
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: isSavingCollection
+                                  ? null
+                                  : () => _showCollectionSetupBottomSheet(
+                                      hall,
+                                      day,
+                                      shift,
+                                      schedule,
+                                    ),
+                              icon: const Icon(Icons.edit_calendar, size: 18),
+                              label: const Text('Set Dates'),
                             ),
                             if (isSavingCollection)
                               const SizedBox(
