@@ -933,28 +933,27 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                  child: Row(
+                  child: Column(
                     children: [
-                      Expanded(
-                        flex: 2,
-                        child: TextField(
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            labelText: 'Search patient / ID / hospital',
-                            prefixIcon: const Icon(Icons.search),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            suffixIcon: _searchController.text.trim().isEmpty
-                                ? null
-                                : IconButton(
-                                    onPressed: () => _searchController.clear(),
-                                    icon: const Icon(Icons.clear),
-                                  ),
+                      TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          labelText: 'Search patient / ID / hospital',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
+                          suffixIcon: _searchController.text.trim().isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () => _searchController.clear(),
+                                  icon: const Icon(Icons.clear),
+                                ),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(height: 8),
+                      Row(
+                    children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           initialValue: _selectedType,
@@ -986,6 +985,8 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                         selected: _currentOnly,
                         onSelected: (v) => setState(() => _currentOnly = v),
                       ),
+                    ],
+                  ),
                     ],
                   ),
                 ),
