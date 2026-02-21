@@ -110,7 +110,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   'Developed by Dr. Abdalla Khalaf, Bausher Renal Center',
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.normal,
+                    fontWeight: FontWeight.bold,
                     color: Colors.black,
                   ),
                 ),

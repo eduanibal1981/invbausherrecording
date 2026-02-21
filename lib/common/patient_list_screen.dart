@@ -5,6 +5,7 @@ import 'filter_screen.dart';
 import 'patient_dashboard_screen_v2.dart';
 import '../admin/administration_screen.dart';
 import '../admin/nurse_patient_summary_screen.dart';
+import '../admin/nurse_dr_patient_summary_screen.dart';
 import '../admin/lab_requests_screen.dart';
 import 'about_screen.dart';
 import '../screens/pending_uploads_screen.dart';
@@ -455,12 +456,27 @@ class _PatientListScreenState extends State<PatientListScreen> {
             icon: const Icon(Icons.leaderboard),
             tooltip: 'Nurse Patient Summary',
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const NursePatientSummaryScreen(),
-                ),
-              );
+              final isGlobalAdmin =
+                  _currentStaff != null &&
+                  (_currentStaff!['medicalstaffid'] == 59726 ||
+                      _currentStaff!['medicalstaffid'] == 66931 ||
+                      _currentStaff!['medicalstaffid'] == 57492);
+
+              if (isGlobalAdmin) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NurseDrPatientSummaryScreen(),
+                  ),
+                );
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NursePatientSummaryScreen(),
+                  ),
+                );
+              }
             },
           ),
           IconButton(

@@ -74,7 +74,16 @@ class AboutScreen extends StatelessWidget {
               const SizedBox(height: 24),
               _buildInfoRow(
                 Icons.business,
-                'Developed By Dr Abdalla Khalaf Gomaa -- Bausher RDC',
+                'Developed By Dr Abdalla Khalaf Gomaa',
+              ),
+              const SizedBox(height: 16),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.asset(
+                  'lib/assets/camplogo.jpg',
+                  width: 200,
+                  fit: BoxFit.contain,
+                ),
               ),
               const SizedBox(height: 16),
               _buildInfoRow(Icons.phone, '93990492'),
@@ -97,7 +106,7 @@ class AboutScreen extends StatelessWidget {
       children: [
         Icon(icon, size: 20, color: Colors.grey[600]),
         const SizedBox(width: 8),
-        Text(text, style: TextStyle(fontSize: 16, color: Colors.grey[700])),
+        Text(text, style: TextStyle(fontSize: 18, color: Colors.grey[900])),
       ],
     );
   }

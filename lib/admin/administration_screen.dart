@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'nurse_patient_summary_screen.dart';
+import 'nurse_dr_patient_summary_screen.dart';
 import 'nurse_assignment_screen.dart';
 import 'main_schedule_config_screen.dart';
 import 'lab_requests_screen.dart';
@@ -471,14 +471,14 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
             iconColor: Colors.teal.shade900,
             children: [
               _buildActionTile(
-                title: 'Nurse Patient Summary',
-                subtitle: 'View monthly blood work statistics per nurse',
+                title: 'Nurse & Doctor Patient Summary',
+                subtitle: 'View monthly blood work statistics per staff member',
                 isLoading: false,
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const NursePatientSummaryScreen(),
+                      builder: (context) => const NurseDrPatientSummaryScreen(),
                     ),
                   );
                 },

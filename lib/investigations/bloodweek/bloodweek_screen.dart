@@ -456,7 +456,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
               children: fields.map((f) {
                 if (f is Widget) return f;
                 return SizedBox(
-                  width: 150,
+                  width: 175,
                   child: _buildTextField(
                     _customLabels[f] ?? f.toUpperCase(),
                     f,
@@ -473,6 +473,15 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
   Widget _buildTextField(String label, String key) {
     // Auto-calculated fields (read-only)
     final isReadOnly = key == 'effurr' || key == 'effktv';
+
+    String? prevText;
+    if (controller.previousMonthData != null &&
+        controller.previousMonthData!.values[key] != null &&
+        controller.previousMonthData!.values[key].toString().isNotEmpty &&
+        key != 'staffenter') {
+      prevText =
+          '${controller.previousMonthStr?.substring(0, 3)}: ${controller.previousMonthData!.values[key]}';
+    }
 
     // Define validation ranges for medical values
     String? validator(String? value) {
@@ -508,20 +517,38 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
       return null;
     }
 
-    return TextFormField(
-      controller: controller.controllers[key],
-      readOnly: isReadOnly,
-      decoration: InputDecoration(
-        labelText: isReadOnly ? '$label (Auto)' : label,
-        border: const OutlineInputBorder(),
-        isDense: true,
-        filled: isReadOnly,
-        fillColor: isReadOnly ? Colors.yellow.shade100 : null,
-      ),
-      keyboardType: key == 'staffenter'
-          ? TextInputType.text
-          : const TextInputType.numberWithOptions(decimal: true),
-      validator: validator,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: TextFormField(
+            controller: controller.controllers[key],
+            readOnly: isReadOnly,
+            decoration: InputDecoration(
+              labelText: isReadOnly ? '$label (Auto)' : label,
+              border: const OutlineInputBorder(),
+              isDense: true,
+              filled: isReadOnly,
+              fillColor: isReadOnly ? Colors.yellow.shade100 : null,
+            ),
+            keyboardType: key == 'staffenter'
+                ? TextInputType.text
+                : const TextInputType.numberWithOptions(decimal: true),
+            validator: validator,
+          ),
+        ),
+        if (prevText != null) ...[
+          const SizedBox(width: 8),
+          Text(
+            prevText,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.blueGrey.shade600,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

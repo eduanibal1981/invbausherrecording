@@ -38,6 +38,8 @@ class BloodWeekController extends ChangeNotifier {
   String? errorMessage;
 
   int? existingRecordId;
+  BloodWeekModel? previousMonthData;
+  String? previousMonthStr;
 
   /// Public method to set isDrRevBw and mark as unsaved
   void setDrReview(bool value) {
@@ -87,6 +89,8 @@ class BloodWeekController extends ChangeNotifier {
       } else {
         _clearForm();
       }
+
+      await _fetchPreviousMonthData(pcid);
     } catch (e) {
       // 🔥 OFFLINE FALLBACK
       if (_cache.containsKey(key)) {
@@ -100,6 +104,48 @@ class BloodWeekController extends ChangeNotifier {
 
     isLoading = false;
     notifyListeners();
+  }
+
+  Future<void> _fetchPreviousMonthData(int pcid) async {
+    int prevYear = selectedYear;
+    int currMonthIndex = months.indexOf(selectedMonth);
+    int prevMonthIndex;
+
+    if (currMonthIndex == 0) {
+      prevMonthIndex = 11;
+      prevYear--;
+    } else {
+      prevMonthIndex = currMonthIndex - 1;
+    }
+
+    String prevMonth = months[prevMonthIndex];
+    previousMonthStr = prevMonth;
+    final String prevKey = '$pcid-$prevYear-$prevMonth';
+
+    if (_cache.containsKey(prevKey)) {
+      previousMonthData = _cache[prevKey];
+      return;
+    }
+
+    try {
+      final prevResponse = await supabase
+          .from('bloodweek')
+          .select()
+          .eq('pcid', pcid)
+          .eq('year', prevYear)
+          .eq('month', prevMonth)
+          .maybeSingle();
+
+      if (prevResponse != null) {
+        final model = BloodWeekModel.fromMap(prevResponse, fields);
+        _cache[prevKey] = model;
+        previousMonthData = model;
+      } else {
+        previousMonthData = null;
+      }
+    } catch (e) {
+      previousMonthData = null;
+    }
   }
 
   /// Saves data to Supabase.
@@ -165,6 +211,7 @@ class BloodWeekController extends ChangeNotifier {
     needCollect = false;
     isOfflineData = false;
     errorMessage = null;
+    previousMonthData = null;
     for (final c in controllers.values) {
       c.clear();
     }
