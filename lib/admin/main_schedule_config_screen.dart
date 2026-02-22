@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MainScheduleConfigScreen extends StatefulWidget {
   const MainScheduleConfigScreen({super.key});
@@ -205,6 +206,90 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
   String _scheduleKey(String hall, String day, String shift) =>
       '$hall|$day|$shift';
 
+  Future<void> _triggerWhatsAppAlert(
+    int staffId,
+    String hall,
+    String day,
+    String shift,
+  ) async {
+    try {
+      final staffRes = await Supabase.instance.client
+          .from('staff')
+          .select('name, phone')
+          .eq('medicalstaffid', staffId)
+          .maybeSingle();
+
+      if (staffRes == null || staffRes['phone'] == null) return;
+
+      final phone = staffRes['phone'].toString().trim();
+      final name = staffRes['name'].toString().trim();
+      if (phone.isEmpty) return;
+
+      if (!mounted) return;
+
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.message, color: Colors.green),
+              SizedBox(width: 8),
+              Text('WhatsApp Alert', style: TextStyle(fontSize: 18)),
+            ],
+          ),
+          content: Text(
+            'Would you like to send a WhatsApp message to $name reminding them to record the labs for this group?\n\nHall: $hall\nDay: $day\nShift: $shift\nPhone: $phone',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('No'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Send WhatsApp'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        final message =
+            'Hey please record the patients lab, Hall $hall / $day / $shift is Collected';
+
+        String waPhone = phone.replaceAll(RegExp(r'[^\d+]'), '');
+        final url = Uri.parse(
+          'whatsapp://send?phone=$waPhone&text=${Uri.encodeComponent(message)}',
+        );
+
+        if (await canLaunchUrl(url)) {
+          await launchUrl(url);
+        } else {
+          final webUrl = Uri.parse(
+            'https://wa.me/$waPhone?text=${Uri.encodeComponent(message)}',
+          );
+          if (await canLaunchUrl(webUrl)) {
+            await launchUrl(webUrl);
+          } else {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not launch WhatsApp'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('WhatsApp alert error: $e');
+    }
+  }
+
   DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
     final text = value.toString().trim();
@@ -304,7 +389,17 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
     final key = _scheduleKey(hall, day, shift);
     if (_savingCollectionKeys.contains(key)) return;
 
+    final bool wasCollected = schedule['ismcollected'] == true;
     bool isCollected = schedule['ismcollected'] == true;
+
+    int? staffId;
+    final staffIdRaw = schedule['staffid'];
+    if (staffIdRaw is int) {
+      staffId = staffIdRaw;
+    } else if (staffIdRaw is String) {
+      staffId = int.tryParse(staffIdRaw);
+    }
+
     DateTime? bwDate = _parseDate(schedule['collectiontime_bw']);
     DateTime? pthDate = _parseDate(schedule['collectiontime_pth']);
     DateTime? ironDate = _parseDate(schedule['collectiontime_iron']);
@@ -474,6 +569,17 @@ class _MainScheduleConfigScreenState extends State<MainScheduleConfigScreen> {
                                     backgroundColor: Colors.green,
                                   ),
                                 );
+
+                                if (isCollected &&
+                                    !wasCollected &&
+                                    staffId != null) {
+                                  _triggerWhatsAppAlert(
+                                    staffId,
+                                    hall,
+                                    day,
+                                    shift,
+                                  );
+                                }
                               } else {
                                 setSheetState(() => isSaving = false);
                               }

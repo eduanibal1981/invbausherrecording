@@ -57,6 +57,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
 
   // Bloodweek status with entered_by info (pcid -> entered_by_name)
   Map<int, String?> _bwEnteredBy = {};
+  Map<int, bool> _bwIsCollected = {};
 
   // Upload Queue Listener
   final BackgroundUploadService _uploadService = BackgroundUploadService();
@@ -150,12 +151,16 @@ class _PatientListScreenState extends State<PatientListScreen> {
     try {
       final response = await Supabase.instance.client
           .from('vw_patients_bw_status')
-          .select('pcid, entered_by_name');
+          .select('pcid, entered_by_name, ismcollected');
 
       final list = List<Map<String, dynamic>>.from(response);
       _bwEnteredBy = {
         for (var item in list)
           item['pcid'] as int: item['entered_by_name'] as String?,
+      };
+      _bwIsCollected = {
+        for (var item in list)
+          item['pcid'] as int: item['ismcollected'] == true,
       };
     } catch (e) {
       debugPrint('Error fetching BW status: $e');
@@ -868,6 +873,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                                   lastBw == currentMonth;
                                               final enteredBy =
                                                   _bwEnteredBy[pcid];
+                                              final isGroupCollected =
+                                                  _bwIsCollected[pcid] == true;
 
                                               String tooltipMsg =
                                                   'Last BW: ${lastBw ?? 'N/A'}';
@@ -877,6 +884,15 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                                     '\nEntered by: $enteredBy';
                                               }
 
+                                              Color circleColor = Colors
+                                                  .grey
+                                                  .shade400; // Pending / Not collected yet
+                                              if (isGroupCollected) {
+                                                circleColor = isRecorded
+                                                    ? Colors.green
+                                                    : Colors.red.shade200;
+                                              }
+
                                               return Tooltip(
                                                 message: tooltipMsg,
                                                 child: Container(
@@ -884,9 +900,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                                   height: 22,
                                                   decoration: BoxDecoration(
                                                     shape: BoxShape.circle,
-                                                    color: isRecorded
-                                                        ? Colors.green
-                                                        : Colors.red.shade200,
+                                                    color: circleColor,
                                                   ),
                                                   child:
                                                       isRecorded &&
