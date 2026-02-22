@@ -11,6 +11,7 @@ import 'about_screen.dart';
 import '../screens/pending_uploads_screen.dart';
 import '../services/background_upload_service.dart';
 import '../vascandecg/vascular_management_screen.dart';
+import '../investigations/bloodweek/indicators_screen.dart';
 
 /// Filter mode for patient list when navigating from other screens
 enum PatientFilterMode {
@@ -516,6 +517,14 @@ class _PatientListScreenState extends State<PatientListScreen> {
                     ),
                   );
                 }
+                if (value == 'indicators') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const IndicatorsScreen(),
+                    ),
+                  );
+                }
                 if (value == 'about') {
                   Navigator.push(
                     context,
@@ -631,6 +640,16 @@ class _PatientListScreenState extends State<PatientListScreen> {
                       ),
                       SizedBox(width: 12),
                       Text("Vascular Management"),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'indicators',
+                  child: Row(
+                    children: [
+                      Icon(Icons.bar_chart, color: Colors.blueGrey, size: 20),
+                      SizedBox(width: 12),
+                      Text("Indicators (Ca, PO4, etc)"),
                     ],
                   ),
                 ),
