@@ -12,6 +12,7 @@ class IndicatorsScreen extends StatefulWidget {
 class _IndicatorsScreenState extends State<IndicatorsScreen> {
   int _selectedYear = DateTime.now().year;
   String _selectedMonth = BloodWeekController.months[DateTime.now().month - 1];
+  String _selectedVAccess = 'All';
 
   bool _isLoading = false;
   bool _useActivePatientsTotal = true;
@@ -37,7 +38,11 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
 
       final response = await Supabase.instance.client.rpc(
         rpcName,
-        params: {'p_year': _selectedYear, 'p_month': _selectedMonth},
+        params: {
+          'p_year': _selectedYear,
+          'p_month': _selectedMonth,
+          'p_vaccess': _selectedVAccess,
+        },
       );
 
       setState(() {
@@ -111,6 +116,31 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Colors.teal.shade50,
+            child: DropdownButtonFormField<String>(
+              initialValue: _selectedVAccess,
+              decoration: const InputDecoration(
+                labelText: 'Vascular Access',
+                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              items: [
+                'All',
+                'AVF',
+                'AVG',
+                'Perm. Cath',
+              ].map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
+              onChanged: (v) {
+                if (v != null) {
+                  setState(() => _selectedVAccess = v);
+                  _fetchIndicators();
+                }
+              },
             ),
           ),
           Container(
