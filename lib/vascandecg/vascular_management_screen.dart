@@ -255,16 +255,23 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
         .toList();
 
     int? selectedPcid = _toInt(existing?['pcid']);
+    String? patientLabel;
+    if (selectedPcid != null) {
+      final p = _patientById[selectedPcid];
+      if (p != null) {
+        patientLabel = '${p['name']} ($selectedPcid)';
+      } else {
+        patientLabel = 'Unknown ($selectedPcid)';
+      }
+    }
+
     String? selectedType = existing?['ac_type']?.toString();
     bool isCurrent = existing?['is_currentaccess'] == true;
     String createdHospitalValue =
         existing?['ac_createdhospital']?.toString() ?? '';
     String nextHospitalValue =
         existing?['nextappointment_hospital']?.toString() ?? '';
-    const hospitalSuggestions = <String>[
-      'Royal Hospital',
-      'Khawla Hspital',
-    ];
+    const hospitalSuggestions = <String>['Royal Hospital', 'Khawla Hspital'];
 
     final fullNameCtrl = TextEditingController(
       text: existing?['ac_fullname']?.toString() ?? '',
@@ -365,41 +372,86 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    isEdit ? 'Edit Vascular Record' : 'New Vascular Record',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        isEdit ? 'Edit Vascular Record' : 'New Vascular Record',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: isSaving
+                            ? null
+                            : () => Navigator.pop(sheetCtx),
+                        icon: const Icon(Icons.close),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
-                  DropdownMenu<int>(
-                    initialSelection: selectedPcid,
-                    enabled: !isSaving && !isEdit,
-                    label: Text(
-                      isEdit ? 'Patient (Not changeable)' : 'Patient',
-                    ),
-                    enableSearch: true,
-                    enableFilter: true,
-                    menuHeight: 320,
-                    inputDecorationTheme: const InputDecorationTheme(
-                      border: OutlineInputBorder(),
-                    ),
-                    dropdownMenuEntries: activePatients
-                        .map((p) {
-                          final pcid = _toInt(p['pcid']);
-                          if (pcid == null) return null;
-                          return DropdownMenuEntry<int>(
-                            value: pcid,
-                            label: '${p['name']} ($pcid)',
+                  if (isEdit)
+                    TextFormField(
+                      initialValue: patientLabel ?? '',
+                      enabled: false,
+                      decoration: const InputDecoration(
+                        labelText: 'Patient (Not changeable)',
+                        border: OutlineInputBorder(),
+                        filled: true,
+                        fillColor: Color(0xFFF0F0F0),
+                        isDense: true,
+                      ),
+                    )
+                  else
+                    Autocomplete<Map<String, dynamic>>(
+                      displayStringForOption: (option) =>
+                          '${option['name']} (${option['pcid']})',
+                      optionsBuilder: (textEditingValue) {
+                        if (textEditingValue.text.isEmpty) {
+                          return const Iterable<Map<String, dynamic>>.empty();
+                        }
+                        final query = textEditingValue.text.toLowerCase();
+                        return activePatients.where((p) {
+                          final label = '${p['name']} (${p['pcid']})'
+                              .toLowerCase();
+                          return label.contains(query);
+                        });
+                      },
+                      onSelected: (option) {
+                        if (!isSaving) {
+                          setSheetState(
+                            () => selectedPcid = _toInt(option['pcid']),
                           );
-                        })
-                        .whereType<DropdownMenuEntry<int>>()
-                        .toList(),
-                    onSelected: isSaving || isEdit
-                        ? null
-                        : (value) => setSheetState(() => selectedPcid = value),
-                  ),
+                        }
+                      },
+                      optionsMaxHeight: 250,
+                      fieldViewBuilder:
+                          (
+                            context,
+                            textController,
+                            focusNode,
+                            onFieldSubmitted,
+                          ) {
+                            return TextField(
+                              controller: textController,
+                              focusNode: focusNode,
+                              enabled: !isSaving,
+                              onChanged: (val) {
+                                if (selectedPcid != null) {
+                                  setSheetState(() => selectedPcid = null);
+                                }
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Search Patient (Name or ID)',
+                                border: OutlineInputBorder(),
+                                hintText: 'Start typing to search...',
+                              ),
+                            );
+                          },
+                    ),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
                     initialValue: selectedType,
@@ -846,7 +898,6 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
 
     return Column(
       children: [
-
         const SizedBox(height: 8),
         Row(
           children: [
@@ -953,40 +1004,40 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                       ),
                       const SizedBox(height: 8),
                       Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _selectedType,
-                          decoration: const InputDecoration(
-                            labelText: 'Type',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          items: [
-                            const DropdownMenuItem<String>(
-                              value: null,
-                              child: Text('All'),
-                            ),
-                            ..._accessTypes.map(
-                              (t) => DropdownMenuItem<String>(
-                                value: t,
-                                child: Text(_accessTypeLabel(t)),
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _selectedType,
+                              decoration: const InputDecoration(
+                                labelText: 'Type',
+                                border: OutlineInputBorder(),
+                                isDense: true,
                               ),
+                              items: [
+                                const DropdownMenuItem<String>(
+                                  value: null,
+                                  child: Text('All'),
+                                ),
+                                ..._accessTypes.map(
+                                  (t) => DropdownMenuItem<String>(
+                                    value: t,
+                                    child: Text(_accessTypeLabel(t)),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                setState(() => _selectedType = value);
+                              },
                             ),
-                          ],
-                          onChanged: (value) {
-                            setState(() => _selectedType = value);
-                          },
-                        ),
+                          ),
+                          const SizedBox(width: 8),
+                          FilterChip(
+                            label: const Text('Current Only'),
+                            selected: _currentOnly,
+                            onSelected: (v) => setState(() => _currentOnly = v),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      FilterChip(
-                        label: const Text('Current Only'),
-                        selected: _currentOnly,
-                        onSelected: (v) => setState(() => _currentOnly = v),
-                      ),
-                    ],
-                  ),
                     ],
                   ),
                 ),
@@ -1121,17 +1172,7 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          acName.isEmpty
-                                              ? 'Access Name: -'
-                                              : 'Access Name: $acName',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
+
                                         Text(
                                           'Created: ${_displayDate(createdDate)}${acHospital.isEmpty ? '' : ' - $acHospital'}',
                                           style: TextStyle(
