@@ -73,6 +73,9 @@ class BackgroundUploadService extends ChangeNotifier {
     await _loadFromPrefs();
     _isInitialized = true;
     notifyListeners();
+
+    // Resume processing any pending uploads from previous sessions
+    processQueue().ignore();
   }
 
   /// Get pending uploads, ensuring service is initialized
@@ -157,6 +160,10 @@ class BackgroundUploadService extends ChangeNotifier {
     _pendingUploads[id] = upload;
     await _saveToPrefs();
     notifyListeners();
+
+    // Auto-trigger the background upload process
+    processQueue().ignore();
+
     return id;
   }
 
