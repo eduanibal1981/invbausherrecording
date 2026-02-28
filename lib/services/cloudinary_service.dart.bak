@@ -113,13 +113,20 @@ class CloudinaryService {
           'https://res.cloudinary.com/$cloudName/image/upload/q_auto,f_auto/$publicId.jpg';
 
       // Step 6: Check if already in Supabase
-      final existing = await Supabase.instance.client
-          .from('doppplerslinks')
-          .select()
-          .eq('pcid', pcid)
-          .eq('thumbnail_url', thumbnailUrl);
+      final checkUrl = Uri.parse(
+        '${CloudinaryConfig.supabaseUrl}/rest/v1/doppplerslinks?pcid=eq.$pcid&thumbnail_url=eq.${Uri.encodeComponent(thumbnailUrl)}',
+      );
 
-      if ((existing as List).isNotEmpty) {
+      final checkResponse = await http.get(
+        checkUrl,
+        headers: {
+          'apikey': CloudinaryConfig.supabaseKey,
+          'Authorization': 'Bearer ${CloudinaryConfig.supabaseKey}',
+        },
+      );
+
+      final existing = json.decode(checkResponse.body);
+      if (existing.length > 0) {
         return CloudinaryUploadResult(
           success: true,
           message: 'Image uploaded (already in database)',
@@ -132,16 +139,31 @@ class CloudinaryService {
       }
 
       // Step 7: Save all URLs to Supabase
-      try {
-        await Supabase.instance.client.from('doppplerslinks').insert({
+      final supabasePostUrl = Uri.parse(
+        '${CloudinaryConfig.supabaseUrl}/rest/v1/doppplerslinks',
+      );
+
+      final supabaseResponse = await http.post(
+        supabasePostUrl,
+        headers: {
+          'apikey': CloudinaryConfig.supabaseKey,
+          'Authorization': 'Bearer ${CloudinaryConfig.supabaseKey}',
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: json.encode({
           'pcid': pcid,
           'piclink': mediumUrl, // Keep for backward compatibility
           'thumbnail_url': thumbnailUrl,
           'medium_url': mediumUrl,
           'large_url': largeUrl,
           'full_url': fullUrl,
-        });
+        }),
+      );
 
+      // Step 8: Handle Supabase response
+      if (supabaseResponse.statusCode == 201 ||
+          supabaseResponse.statusCode == 200) {
         return CloudinaryUploadResult(
           success: true,
           message: 'Image uploaded and saved successfully',
@@ -151,11 +173,14 @@ class CloudinaryService {
           fullUrl: fullUrl,
           alreadyExists: false,
         );
-      } catch (dbError) {
+      } else {
+        final errorBody =
+            _tryDecodeErrorMessage(supabaseResponse.body) ??
+            supabaseResponse.body;
         return CloudinaryUploadResult(
           success: false,
           message:
-              'Uploaded to Cloudinary but failed to save to Supabase: ${dbError.toString()}',
+              'Uploaded to Cloudinary but failed to save to Supabase: ${supabaseResponse.statusCode} - $errorBody',
           thumbnailUrl: thumbnailUrl,
           mediumUrl: mediumUrl,
           largeUrl: largeUrl,
@@ -245,13 +270,22 @@ class CloudinaryService {
     String pcid,
   ) async {
     try {
-      final response = await Supabase.instance.client
-          .from('doppplerslinks')
-          .select()
-          .eq('pcid', pcid)
-          .order('created_at', ascending: false);
+      final url = Uri.parse(
+        '${CloudinaryConfig.supabaseUrl}/rest/v1/doppplerslinks?pcid=eq.$pcid&order=created_at.desc',
+      );
 
-      return List<Map<String, dynamic>>.from(response);
+      final response = await http.get(
+        url,
+        headers: {
+          'apikey': CloudinaryConfig.supabaseKey,
+          'Authorization': 'Bearer ${CloudinaryConfig.supabaseKey}',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(json.decode(response.body));
+      }
+      return [];
     } catch (e) {
       return [];
     }
@@ -259,11 +293,26 @@ class CloudinaryService {
 
   static Future<CloudinaryDeleteResult> _deleteFromSupabase(int id) async {
     try {
-      await Supabase.instance.client
-          .from('doppplerslinks')
-          .delete()
-          .eq('id', id);
-      return CloudinaryDeleteResult(success: true);
+      final url = Uri.parse(
+        '${CloudinaryConfig.supabaseUrl}/rest/v1/doppplerslinks?id=eq.$id',
+      );
+
+      final response = await http.delete(
+        url,
+        headers: {
+          'apikey': CloudinaryConfig.supabaseKey,
+          'Authorization': 'Bearer ${CloudinaryConfig.supabaseKey}',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return CloudinaryDeleteResult(success: true);
+      }
+      final errorBody = _tryDecodeErrorMessage(response.body) ?? response.body;
+      return CloudinaryDeleteResult(
+        success: false,
+        message: '${response.statusCode} - $errorBody',
+      );
     } catch (e) {
       return CloudinaryDeleteResult(
         success: false,
@@ -458,13 +507,20 @@ class CloudinaryService {
           'https://res.cloudinary.com/$cloudName/image/upload/q_auto,f_auto/$publicId.jpg';
 
       // Step 6: Check if already in Supabase
-      final existing = await Supabase.instance.client
-          .from('ecg_links')
-          .select()
-          .eq('pcid', pcid)
-          .eq('thumbnail_url', thumbnailUrl);
+      final checkUrl = Uri.parse(
+        '${CloudinaryConfig.supabaseUrl}/rest/v1/ecg_links?pcid=eq.$pcid&thumbnail_url=eq.${Uri.encodeComponent(thumbnailUrl)}',
+      );
 
-      if ((existing as List).isNotEmpty) {
+      final checkResponse = await http.get(
+        checkUrl,
+        headers: {
+          'apikey': CloudinaryConfig.supabaseKey,
+          'Authorization': 'Bearer ${CloudinaryConfig.supabaseKey}',
+        },
+      );
+
+      final existing = json.decode(checkResponse.body);
+      if (existing is List && existing.isNotEmpty) {
         return CloudinaryUploadResult(
           success: true,
           message: 'Image uploaded (already in database)',
@@ -477,16 +533,30 @@ class CloudinaryService {
       }
 
       // Step 7: Save to Supabase
-      try {
-        await Supabase.instance.client.from('ecg_links').insert({
+      final supabasePostUrl = Uri.parse(
+        '${CloudinaryConfig.supabaseUrl}/rest/v1/ecg_links',
+      );
+
+      final supabaseResponse = await http.post(
+        supabasePostUrl,
+        headers: {
+          'apikey': CloudinaryConfig.supabaseKey,
+          'Authorization': 'Bearer ${CloudinaryConfig.supabaseKey}',
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: json.encode({
           'pcid': pcid,
           'piclink': mediumUrl,
           'thumbnail_url': thumbnailUrl,
           'medium_url': mediumUrl,
           'large_url': largeUrl,
           'full_url': fullUrl,
-        });
+        }),
+      );
 
+      if (supabaseResponse.statusCode == 201 ||
+          supabaseResponse.statusCode == 200) {
         return CloudinaryUploadResult(
           success: true,
           message: 'Image uploaded and saved successfully',
@@ -496,11 +566,14 @@ class CloudinaryService {
           fullUrl: fullUrl,
           alreadyExists: false,
         );
-      } catch (dbError) {
+      } else {
+        final errorBody =
+            _tryDecodeErrorMessage(supabaseResponse.body) ??
+            supabaseResponse.body;
         return CloudinaryUploadResult(
           success: false,
           message:
-              'Uploaded to Cloudinary but failed to save to Supabase: ${dbError.toString()}',
+              'Uploaded to Cloudinary but failed to save to Supabase: ${supabaseResponse.statusCode} - $errorBody',
           thumbnailUrl: thumbnailUrl,
           mediumUrl: mediumUrl,
           largeUrl: largeUrl,
@@ -544,20 +617,31 @@ class CloudinaryService {
       }
 
       // Delete from Supabase
-      try {
-        await Supabase.instance.client.from('ecg_links').delete().eq('id', id);
+      final url = Uri.parse(
+        '${CloudinaryConfig.supabaseUrl}/rest/v1/ecg_links?id=eq.$id',
+      );
 
+      final response = await http.delete(
+        url,
+        headers: {
+          'apikey': CloudinaryConfig.supabaseKey,
+          'Authorization': 'Bearer ${CloudinaryConfig.supabaseKey}',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
         return CloudinaryDeleteResult(
           success: true,
           message: 'Image deleted from Cloudinary and Supabase',
         );
-      } catch (dbError) {
-        return CloudinaryDeleteResult(
-          success: false,
-          message:
-              'Deleted from Cloudinary but failed to remove from Supabase: ${dbError.toString()}',
-        );
       }
+
+      final errorBody = _tryDecodeErrorMessage(response.body) ?? response.body;
+      return CloudinaryDeleteResult(
+        success: false,
+        message:
+            'Deleted from Cloudinary but failed to remove from Supabase: ${response.statusCode} - $errorBody',
+      );
     } catch (e) {
       return CloudinaryDeleteResult(
         success: false,
@@ -569,13 +653,22 @@ class CloudinaryService {
   /// Fetch all ECG images for a patient
   static Future<List<Map<String, dynamic>>> fetchEcgImages(String pcid) async {
     try {
-      final response = await Supabase.instance.client
-          .from('ecg_links')
-          .select()
-          .eq('pcid', pcid)
-          .order('created_at', ascending: false);
+      final url = Uri.parse(
+        '${CloudinaryConfig.supabaseUrl}/rest/v1/ecg_links?pcid=eq.$pcid&order=created_at.desc',
+      );
 
-      return List<Map<String, dynamic>>.from(response);
+      final response = await http.get(
+        url,
+        headers: {
+          'apikey': CloudinaryConfig.supabaseKey,
+          'Authorization': 'Bearer ${CloudinaryConfig.supabaseKey}',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(json.decode(response.body));
+      }
+      return [];
     } catch (e) {
       return [];
     }
@@ -584,12 +677,22 @@ class CloudinaryService {
   /// Update Clinical Note for an ECG image
   static Future<bool> updateEcgClinicalNote(int id, String note) async {
     try {
-      await Supabase.instance.client
-          .from('ecg_links')
-          .update({'clinicalnote': note})
-          .eq('id', id);
+      final url = Uri.parse(
+        '${CloudinaryConfig.supabaseUrl}/rest/v1/ecg_links?id=eq.$id',
+      );
 
-      return true;
+      final response = await http.patch(
+        url,
+        headers: {
+          'apikey': CloudinaryConfig.supabaseKey,
+          'Authorization': 'Bearer ${CloudinaryConfig.supabaseKey}',
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: json.encode({'clinicalnote': note}),
+      );
+
+      return response.statusCode >= 200 && response.statusCode < 300;
     } catch (e) {
       return false;
     }
@@ -650,27 +753,44 @@ class CloudinaryService {
           'https://res.cloudinary.com/$cloudName/video/upload/q_auto,f_auto/$publicId.mp4';
 
       // Save to Supabase (reusing doppplerslinks table)
-      try {
-        await Supabase.instance.client.from('doppplerslinks').insert({
+      final supabasePostUrl = Uri.parse(
+        '${CloudinaryConfig.supabaseUrl}/rest/v1/doppplerslinks',
+      );
+
+      final supabaseResponse = await http.post(
+        supabasePostUrl,
+        headers: {
+          'apikey': CloudinaryConfig.supabaseKey,
+          'Authorization': 'Bearer ${CloudinaryConfig.supabaseKey}',
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: json.encode({
           'pcid': pcid,
           'piclink': fullUrl,
           'thumbnail_url': thumbnailUrl,
           'medium_url': thumbnailUrl, // Use thumbnail for medium too
           'large_url': fullUrl,
           'full_url': fullUrl,
-        });
+        }),
+      );
 
+      if (supabaseResponse.statusCode == 201 ||
+          supabaseResponse.statusCode == 200) {
         return CloudinaryUploadResult(
           success: true,
           message: 'Video upload successful',
           thumbnailUrl: thumbnailUrl,
           fullUrl: fullUrl,
         );
-      } catch (dbError) {
+      } else {
+        final errorBody =
+            _tryDecodeErrorMessage(supabaseResponse.body) ??
+            supabaseResponse.body;
         return CloudinaryUploadResult(
           success: false,
           message:
-              'Uploaded to Cloudinary but failed to save to Supabase: ${dbError.toString()}',
+              'Uploaded to Cloudinary but failed to save to Supabase: ${supabaseResponse.statusCode} - $errorBody',
           thumbnailUrl: thumbnailUrl,
           fullUrl: fullUrl,
         );
