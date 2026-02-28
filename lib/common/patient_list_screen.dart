@@ -224,26 +224,59 @@ class _PatientListScreenState extends State<PatientListScreen> {
 
     setState(() => _isLoadingFilter = true);
     try {
-      var query = Supabase.instance.client.from('schedules').select('pcid');
+      Set<int>? schedulePcids;
+      if (_filters['hallname'] != null ||
+          _filters['day'] != null ||
+          _filters['shift'] != null) {
+        var query = Supabase.instance.client.from('schedules').select('pcid');
 
-      if (_filters['hallname'] != null) {
-        query = query.eq('hallname', _filters['hallname']);
-      }
-      if (_filters['day'] != null) {
-        query = query.eq('day', _filters['day']);
-      }
-      if (_filters['shift'] != null) {
-        query = query.eq('shift', _filters['shift']);
+        if (_filters['hallname'] != null) {
+          query = query.eq('hallname', _filters['hallname']);
+        }
+        if (_filters['day'] != null) {
+          query = query.eq('day', _filters['day']);
+        }
+        if (_filters['shift'] != null) {
+          query = query.eq('shift', _filters['shift']);
+        }
+
+        final response = await query;
+        schedulePcids = (response as List).map((e) => e['pcid'] as int).toSet();
       }
 
-      final response = await query;
-      final ids = (response as List)
-          .map((e) => e['pcid'] as int)
-          .toSet()
-          .toList(); // Unique IDs
+      Set<int>? labAbnormalityPcids;
+      final labAbnormality = _filters['labAbnormalityFilter'];
+      if (labAbnormality != null) {
+        String rpcName = '';
+        if (labAbnormality == 'hb_dropping') {
+          rpcName = 'get_patients_with_dropping_hb';
+        } else if (labAbnormality == 'po4_rising') {
+          rpcName = 'get_patients_with_rising_po4';
+        } else if (labAbnormality == 'pth_rising') {
+          rpcName = 'get_patients_with_rising_pth';
+        }
+
+        if (rpcName.isNotEmpty) {
+          final abnResponse = await Supabase.instance.client.rpc(rpcName);
+          labAbnormalityPcids = (abnResponse as List)
+              .map((e) => int.parse(e.toString()))
+              .toSet();
+        }
+      }
+
+      List<int>? finalPcids;
+      if (schedulePcids != null && labAbnormalityPcids != null) {
+        finalPcids = schedulePcids.intersection(labAbnormalityPcids).toList();
+      } else if (schedulePcids != null) {
+        finalPcids = schedulePcids.toList();
+      } else if (labAbnormalityPcids != null) {
+        finalPcids = labAbnormalityPcids.toList();
+      } else {
+        finalPcids = null;
+      }
 
       setState(() {
-        _filteredPcids = ids;
+        _filteredPcids = finalPcids;
       });
     } catch (e) {
       if (mounted) {
@@ -993,6 +1026,11 @@ class _PatientListScreenState extends State<PatientListScreen> {
         return 'Search: $value';
       case 'vaccessFilter':
         return 'Access: $value';
+      case 'labAbnormalityFilter':
+        if (value == 'hb_dropping') return 'Labs: Hb < 10 & Dropped';
+        if (value == 'po4_rising') return 'Labs: Po4 > 1.8 & Rose';
+        if (value == 'pth_rising') return 'Labs: PTH > 59 & Rose';
+        return 'Labs: $value';
       default:
         return value?.toString() ?? key;
     }

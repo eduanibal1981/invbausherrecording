@@ -18,6 +18,8 @@ class _FilterScreenState extends State<FilterScreen> {
   String? _vascularFilter; // null = Any, 'has' = Has Images, 'none' = No Images
   String? _ecgFilter; // null = Any, 'has' = Has Images, 'none' = No Images
   String? _vaccessFilter; // null = Any, or specific access type
+  String?
+  _labAbnormalityFilter; // null = Any, 'hb_dropping', 'po4_rising', 'pth_rising'
   bool _hasSearchText = false;
 
   @override
@@ -37,6 +39,7 @@ class _FilterScreenState extends State<FilterScreen> {
     _vascularFilter = widget.initialFilters['vascularFilter'];
     _ecgFilter = widget.initialFilters['ecgFilter'];
     _vaccessFilter = widget.initialFilters['vaccessFilter'];
+    _labAbnormalityFilter = widget.initialFilters['labAbnormalityFilter'];
   }
 
   @override
@@ -63,6 +66,8 @@ class _FilterScreenState extends State<FilterScreen> {
       if (_vascularFilter != null) 'vascularFilter': _vascularFilter,
       if (_ecgFilter != null) 'ecgFilter': _ecgFilter,
       if (_vaccessFilter != null) 'vaccessFilter': _vaccessFilter,
+      if (_labAbnormalityFilter != null)
+        'labAbnormalityFilter': _labAbnormalityFilter,
     });
   }
 
@@ -261,6 +266,65 @@ class _FilterScreenState extends State<FilterScreen> {
                       DropdownMenuItem(value: 'none', child: Text('No Labs')),
                     ],
                     onChanged: (val) => setState(() => _labFilter = val),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 0,
+            color: Colors.brown.shade50,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.brown.shade100),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Lab Abnormalities',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.brown.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _labAbnormalityFilter,
+                    decoration: InputDecoration(
+                      labelText: 'Filter By Lab Trends',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 0,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Any')),
+                      DropdownMenuItem(
+                        value: 'hb_dropping',
+                        child: Text('Hb < 10 & Dropped'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'po4_rising',
+                        child: Text('Po4 > 1.8 & Rose'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'pth_rising',
+                        child: Text('PTH > 59 & Rose'),
+                      ),
+                    ],
+                    onChanged: (val) =>
+                        setState(() => _labAbnormalityFilter = val),
                   ),
                 ],
               ),
