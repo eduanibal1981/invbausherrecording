@@ -260,10 +260,41 @@ class _FilterScreenState extends State<FilterScreen> {
                         vertical: 0,
                       ),
                     ),
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Any')),
-                      DropdownMenuItem(value: 'has', child: Text('Has Labs')),
-                      DropdownMenuItem(value: 'none', child: Text('No Labs')),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('Any')),
+                      const DropdownMenuItem(
+                        value: 'has',
+                        child: Text('Has Labs'),
+                      ),
+                      const DropdownMenuItem(
+                        value: 'none',
+                        child: Text('No Labs'),
+                      ),
+                      ...[
+                        'January',
+                        'February',
+                        'March',
+                        'April',
+                        'May',
+                        'June',
+                        'July',
+                        'August',
+                        'September',
+                        'October',
+                        'November',
+                        'December',
+                      ].expand(
+                        (m) => [
+                          DropdownMenuItem(
+                            value: 'has_$m 2026',
+                            child: Text('Has Labs ($m 2026)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'none_$m 2026',
+                            child: Text('No Labs ($m 2026)'),
+                          ),
+                        ],
+                      ),
                     ],
                     onChanged: (val) => setState(() => _labFilter = val),
                   ),

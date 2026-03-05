@@ -43,6 +43,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
   // Filters
   Map<String, dynamic> _filters = {};
   List<int>? _filteredPcids;
+  Set<int>? _recordedLabMonthPcids;
   bool _isLoadingFilter = false;
 
   // Staff Logic
@@ -218,6 +219,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
     if (_filters.isEmpty) {
       setState(() {
         _filteredPcids = null;
+        _recordedLabMonthPcids = null;
       });
       return;
     }
@@ -275,8 +277,36 @@ class _PatientListScreenState extends State<PatientListScreen> {
         finalPcids = null;
       }
 
+      Set<int>? recordedMonthPcids;
+      final labFilter = _filters['labFilter'];
+      if (labFilter != null && labFilter != 'has' && labFilter != 'none') {
+        String monthStr = labFilter;
+        if (labFilter.startsWith('has_'))
+          monthStr = labFilter.substring(4);
+        else if (labFilter.startsWith('none_'))
+          monthStr = labFilter.substring(5);
+        // Fallback for just "January 2026"
+
+        final parts = monthStr.split(' ');
+        if (parts.length == 2) {
+          final month = parts[0];
+          final year = int.tryParse(parts[1]);
+          if (year != null) {
+            final bwResponse = await Supabase.instance.client
+                .from('bloodweek')
+                .select('pcid')
+                .eq('month', month)
+                .eq('year', year);
+            recordedMonthPcids = (bwResponse as List)
+                .map((e) => e['pcid'] as int)
+                .toSet();
+          }
+        }
+      }
+
       setState(() {
         _filteredPcids = finalPcids;
+        _recordedLabMonthPcids = recordedMonthPcids;
       });
     } catch (e) {
       if (mounted) {
@@ -372,15 +402,22 @@ class _PatientListScreenState extends State<PatientListScreen> {
 
       // 4. Monthly Labs Filter
       if (labFilter != null) {
-        final lastBw = patient['lastbwcollected']?.toString() ?? '';
         if (labFilter == 'has') {
+          final lastBw = patient['lastbwcollected']?.toString() ?? '';
           if (lastBw != currentMonth) {
             return false;
           }
         } else if (labFilter == 'none') {
+          final lastBw = patient['lastbwcollected']?.toString() ?? '';
           if (lastBw == currentMonth) {
             return false;
           }
+        } else {
+          final isHas = !labFilter.startsWith('none_');
+          final hasLab =
+              _recordedLabMonthPcids?.contains(patient['pcid']) ?? false;
+          if (isHas && !hasLab) return false;
+          if (!isHas && hasLab) return false;
         }
       }
 
@@ -1007,6 +1044,13 @@ class _PatientListScreenState extends State<PatientListScreen> {
       case 'labFilter':
         if (value == 'has') return 'Labs: Has Labs';
         if (value == 'none') return 'Labs: No Labs';
+        if (value != null && value != 'Any') {
+          if (value.toString().startsWith('has_'))
+            return 'Labs: Has Labs (${value.toString().substring(4)})';
+          if (value.toString().startsWith('none_'))
+            return 'Labs: No Labs (${value.toString().substring(5)})';
+          return 'Labs: $value';
+        }
         return 'Labs: Any';
       case 'vascularFilter':
         if (value == 'has') return 'Has Doppler';
