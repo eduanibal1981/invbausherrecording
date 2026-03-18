@@ -20,6 +20,7 @@ class _FilterScreenState extends State<FilterScreen> {
   String? _vaccessFilter; // null = Any, or specific access type
   String?
   _labAbnormalityFilter; // null = Any, 'hb_dropping', 'po4_rising', 'pth_rising'
+  bool _outPatientsOnly = false;
   bool _hasSearchText = false;
 
   @override
@@ -40,6 +41,7 @@ class _FilterScreenState extends State<FilterScreen> {
     _ecgFilter = widget.initialFilters['ecgFilter'];
     _vaccessFilter = widget.initialFilters['vaccessFilter'];
     _labAbnormalityFilter = widget.initialFilters['labAbnormalityFilter'];
+    _outPatientsOnly = widget.initialFilters['outPatientsOnly'] == true;
   }
 
   @override
@@ -68,6 +70,7 @@ class _FilterScreenState extends State<FilterScreen> {
       if (_vaccessFilter != null) 'vaccessFilter': _vaccessFilter,
       if (_labAbnormalityFilter != null)
         'labAbnormalityFilter': _labAbnormalityFilter,
+      if (_outPatientsOnly) 'outPatientsOnly': true,
     });
   }
 
@@ -99,6 +102,22 @@ class _FilterScreenState extends State<FilterScreen> {
                     )
                   : null,
             ),
+          ),
+          const SizedBox(height: 16),
+          CheckboxListTile(
+            title: const Text('? Out patients'),
+            subtitle: const Text(
+              'Show active patients who are out of position',
+            ),
+            value: _outPatientsOnly,
+            onChanged: (val) {
+              setState(() {
+                _outPatientsOnly = val ?? false;
+              });
+            },
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            activeColor: Colors.teal,
           ),
           const SizedBox(height: 16),
           Card(

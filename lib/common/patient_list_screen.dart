@@ -457,6 +457,13 @@ class _PatientListScreenState extends State<PatientListScreen> {
           return false;
         }
       }
+      // 8. Out Patients Add Filter (Status = Active, OutPosition = True)
+      if (_filters['outPatientsOnly'] == true) {
+        if (patient['status']?.toString().toLowerCase() != 'active' ||
+            patient['outposition'] != true) {
+          return false;
+        }
+      }
 
       return true;
     }).toList();
@@ -476,6 +483,116 @@ class _PatientListScreenState extends State<PatientListScreen> {
       return 'Hi ${_currentStaff!['name']}';
     }
     return 'Patients';
+  }
+
+  void _showPatientProfileBottomSheet(
+    BuildContext context,
+    Map<String, dynamic> patient,
+  ) {
+    bool outPosition = patient['outposition'] == true;
+    final causeController = TextEditingController(
+      text: patient['outpostioncause'] ?? '',
+    );
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              left: 16,
+              right: 16,
+              top: 16,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    patient['name'] ?? 'Unknown',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    title: const Text('Out of Position'),
+                    subtitle: const Text(
+                      'Is the patient currently out of the unit?',
+                    ),
+                    value: outPosition,
+                    onChanged: (val) {
+                      setSheetState(() {
+                        outPosition = val;
+                      });
+                    },
+                  ),
+                  if (outPosition) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: causeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Cause for out of position',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () async {
+                      try {
+                        await Supabase.instance.client
+                            .from('patients')
+                            .update({
+                              'outposition': outPosition,
+                              'outpostioncause': outPosition
+                                  ? causeController.text
+                                  : null,
+                            })
+                            .eq('pcid', patient['pcid']);
+
+                        // Update local item
+                        setState(() {
+                          patient['outposition'] = outPosition;
+                          patient['outpostioncause'] = outPosition
+                              ? causeController.text
+                              : null;
+                        });
+                        if (context.mounted) Navigator.pop(context);
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error updating patient: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text('Save'),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -875,6 +992,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                   final patient = patients[index];
                                   return Card(
                                     elevation: 4,
+                                    color: patient['outposition'] == true
+                                        ? Colors.yellow.shade50
+                                        : null,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -901,15 +1021,24 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                           ),
                                         );
                                       },
-                                      leading: CircleAvatar(
-                                        backgroundColor: Colors.teal.shade100,
-                                        child: Text(
-                                          (patient['name'] as String?)
-                                                  ?.substring(0, 1)
-                                                  .toUpperCase() ??
-                                              '?',
-                                          style: TextStyle(
-                                            color: Colors.teal.shade900,
+                                      leading: GestureDetector(
+                                        onLongPress: () {
+                                          _showPatientProfileBottomSheet(
+                                            context,
+                                            patient,
+                                          );
+                                        },
+                                        behavior: HitTestBehavior.opaque,
+                                        child: CircleAvatar(
+                                          backgroundColor: Colors.teal.shade100,
+                                          child: Text(
+                                            (patient['name'] as String?)
+                                                    ?.substring(0, 1)
+                                                    .toUpperCase() ??
+                                                '?',
+                                            style: TextStyle(
+                                              color: Colors.teal.shade900,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1075,6 +1204,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
         if (value == 'po4_rising') return 'Labs: Po4 > 1.8 & Rose';
         if (value == 'pth_rising') return 'Labs: PTH > 59 & Rose';
         return 'Labs: $value';
+      case 'outPatientsOnly':
+        return 'Out patients';
       default:
         return value?.toString() ?? key;
     }
