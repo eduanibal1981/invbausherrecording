@@ -59,6 +59,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
   // Bloodweek status with entered_by info (pcid -> entered_by_name)
   Map<int, String?> _bwEnteredBy = {};
   Map<int, bool> _bwIsCollected = {};
+  Map<int, String?> _bwMonth = {};
 
   // Upload Queue Listener
   final BackgroundUploadService _uploadService = BackgroundUploadService();
@@ -135,7 +136,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
     try {
       final response = await Supabase.instance.client
           .from('patients')
-          .select()
+          .select('*, nurse:staff!patients_nstaffid_fkey(name)')
           .eq('status', 'Active');
 
       // Fetch bloodweek status with entered_by_name
@@ -152,7 +153,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
     try {
       final response = await Supabase.instance.client
           .from('vw_patients_bw_status')
-          .select('pcid, entered_by_name, ismcollected');
+          .select('pcid, entered_by_name, ismcollected, bw_month');
 
       final list = List<Map<String, dynamic>>.from(response);
       _bwEnteredBy = {
@@ -162,6 +163,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
       _bwIsCollected = {
         for (var item in list)
           item['pcid'] as int: item['ismcollected'] == true,
+      };
+      _bwMonth = {
+        for (var item in list)
+          item['pcid'] as int: item['bw_month'] as String?,
       };
     } catch (e) {
       debugPrint('Error fetching BW status: $e');
@@ -403,12 +408,12 @@ class _PatientListScreenState extends State<PatientListScreen> {
       // 4. Monthly Labs Filter
       if (labFilter != null) {
         if (labFilter == 'has') {
-          final lastBw = patient['lastbwcollected']?.toString() ?? '';
+          final lastBw = _bwMonth[patient['pcid']]?.toString() ?? '';
           if (lastBw != currentMonth) {
             return false;
           }
         } else if (labFilter == 'none') {
-          final lastBw = patient['lastbwcollected']?.toString() ?? '';
+          final lastBw = _bwMonth[patient['pcid']]?.toString() ?? '';
           if (lastBw == currentMonth) {
             return false;
           }
@@ -465,6 +470,13 @@ class _PatientListScreenState extends State<PatientListScreen> {
         }
       }
 
+      // 9. Unassigned Nurse Filter
+      if (_filters['unassignedNurseOnly'] == true) {
+        if (patient['nstaffid'] != null) {
+          return false;
+        }
+      }
+
       return true;
     }).toList();
   }
@@ -492,6 +504,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
     bool outPosition = patient['outposition'] == true;
     final causeController = TextEditingController(
       text: patient['outpostioncause'] ?? '',
+    );
+    bool lastLabNotCollected = patient['lastlab_notcollected'] == true;
+    final labNotCollectedWhyController = TextEditingController(
+      text: patient['lastbwnot_why'] ?? '',
     );
 
     showModalBottomSheet(
@@ -521,6 +537,23 @@ class _PatientListScreenState extends State<PatientListScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+                  if (patient['nurse'] != null && patient['nurse']['name'] != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.person_outline, size: 16, color: Colors.teal),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Assigned Nurse: ${patient['nurse']['name']}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.teal.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   SwitchListTile(
                     title: const Text('Out of Position'),
@@ -545,6 +578,30 @@ class _PatientListScreenState extends State<PatientListScreen> {
                       maxLines: 2,
                     ),
                   ],
+                  const Divider(height: 32),
+                  SwitchListTile(
+                    title: const Text('Last Lab Not Collected?'),
+                    subtitle: const Text(
+                      'Was the last required monthly lab bloodwork not collected?',
+                    ),
+                    value: lastLabNotCollected,
+                    onChanged: (val) {
+                      setSheetState(() {
+                        lastLabNotCollected = val;
+                      });
+                    },
+                  ),
+                  if (lastLabNotCollected) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: labNotCollectedWhyController,
+                      decoration: const InputDecoration(
+                        labelText: 'Reason for not collecting lab',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   ElevatedButton(
                     onPressed: () async {
@@ -556,6 +613,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
                               'outpostioncause': outPosition
                                   ? causeController.text
                                   : null,
+                              'lastlab_notcollected': lastLabNotCollected,
+                              'lastbwnot_why': lastLabNotCollected
+                                  ? labNotCollectedWhyController.text
+                                  : null,
                             })
                             .eq('pcid', patient['pcid']);
 
@@ -564,6 +625,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
                           patient['outposition'] = outPosition;
                           patient['outpostioncause'] = outPosition
                               ? causeController.text
+                              : null;
+                          patient['lastlab_notcollected'] = lastLabNotCollected;
+                          patient['lastbwnot_why'] = lastLabNotCollected
+                              ? labNotCollectedWhyController.text
                               : null;
                         });
                         if (context.mounted) Navigator.pop(context);
@@ -994,7 +1059,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                     elevation: 4,
                                     color: patient['outposition'] == true
                                         ? Colors.yellow.shade50
-                                        : null,
+                                        : patient['lastlab_notcollected'] == true
+                                            ? Colors.pink.shade50
+                                            : null,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -1049,11 +1116,25 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                           fontSize: 16,
                                         ),
                                       ),
-                                      subtitle: Text(
-                                        'ID: ${patient['pcid']}',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade600,
-                                        ),
+                                      subtitle: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'ID: ${patient['pcid']}',
+                                            style: TextStyle(
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                          if (patient['nurse'] != null && patient['nurse']['name'] != null)
+                                            Text(
+                                              'Nurse: ${patient['nurse']['name']}',
+                                              style: TextStyle(
+                                                color: Colors.teal.shade700,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                        ],
                                       ),
                                       trailing: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -1063,8 +1144,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                             builder: (context) {
                                               final pcid =
                                                   patient['pcid'] as int;
-                                              final lastBw =
-                                                  patient['lastbwcollected'];
+                                              final lastBw = _bwMonth[pcid];
                                               final currentMonth = DateFormat(
                                                 'MMMM',
                                               ).format(DateTime.now());
@@ -1206,6 +1286,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
         return 'Labs: $value';
       case 'outPatientsOnly':
         return 'Out patients';
+      case 'unassignedNurseOnly':
+        return 'Non-assigned nurse';
       default:
         return value?.toString() ?? key;
     }

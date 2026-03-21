@@ -21,6 +21,7 @@ class _FilterScreenState extends State<FilterScreen> {
   String?
   _labAbnormalityFilter; // null = Any, 'hb_dropping', 'po4_rising', 'pth_rising'
   bool _outPatientsOnly = false;
+  bool _unassignedNurseOnly = false;
   bool _hasSearchText = false;
 
   @override
@@ -42,6 +43,7 @@ class _FilterScreenState extends State<FilterScreen> {
     _vaccessFilter = widget.initialFilters['vaccessFilter'];
     _labAbnormalityFilter = widget.initialFilters['labAbnormalityFilter'];
     _outPatientsOnly = widget.initialFilters['outPatientsOnly'] == true;
+    _unassignedNurseOnly = widget.initialFilters['unassignedNurseOnly'] == true;
   }
 
   @override
@@ -71,6 +73,7 @@ class _FilterScreenState extends State<FilterScreen> {
       if (_labAbnormalityFilter != null)
         'labAbnormalityFilter': _labAbnormalityFilter,
       if (_outPatientsOnly) 'outPatientsOnly': true,
+      if (_unassignedNurseOnly) 'unassignedNurseOnly': true,
     });
   }
 
@@ -113,6 +116,22 @@ class _FilterScreenState extends State<FilterScreen> {
             onChanged: (val) {
               setState(() {
                 _outPatientsOnly = val ?? false;
+              });
+            },
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            activeColor: Colors.teal,
+          ),
+          const SizedBox(height: 16),
+          CheckboxListTile(
+            title: const Text('👨‍⚕️ Non-assigned nurse'),
+            subtitle: const Text(
+              'Show active patients without an assigned nurse',
+            ),
+            value: _unassignedNurseOnly,
+            onChanged: (val) {
+              setState(() {
+                _unassignedNurseOnly = val ?? false;
               });
             },
             controlAffinity: ListTileControlAffinity.leading,
