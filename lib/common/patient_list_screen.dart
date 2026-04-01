@@ -165,8 +165,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
           item['pcid'] as int: item['ismcollected'] == true,
       };
       _bwMonth = {
-        for (var item in list)
-          item['pcid'] as int: item['bw_month'] as String?,
+        for (var item in list) item['pcid'] as int: item['bw_month'] as String?,
       };
     } catch (e) {
       debugPrint('Error fetching BW status: $e');
@@ -194,6 +193,74 @@ class _PatientListScreenState extends State<PatientListScreen> {
       }
     } finally {
       if (mounted) setState(() => _isLoggingOut = false);
+    }
+  }
+
+  Future<void> _toggleMyLeaveStatus() async {
+    if (_currentStaff == null) return;
+    final staffId = _currentStaff!['medicalstaffid'];
+    final name = _currentStaff!['name'] ?? 'Unknown';
+    final currentLeaveStatus = _currentStaff!['is_on_leave'] == true;
+    final newStatus = !currentLeaveStatus;
+
+    final action = newStatus
+        ? 'mark yourself as on leave'
+        : 'mark yourself as returned';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(newStatus ? 'Mark as On Leave' : 'Mark as Returned'),
+        content: Text('Are you sure you want to $action?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: newStatus ? Colors.orange : Colors.green,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await Supabase.instance.client
+          .from('staff')
+          .update({'is_on_leave': newStatus, 'changby': name})
+          .eq('medicalstaffid', staffId);
+
+      setState(() {
+        _currentStaff!['is_on_leave'] = newStatus;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newStatus
+                  ? 'You are now marked as on leave.'
+                  : 'You are now marked as returned.',
+            ),
+            backgroundColor: newStatus ? Colors.orange : Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating status: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -537,11 +604,16 @@ class _PatientListScreenState extends State<PatientListScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  if (patient['nurse'] != null && patient['nurse']['name'] != null) ...[
+                  if (patient['nurse'] != null &&
+                      patient['nurse']['name'] != null) ...[
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Icon(Icons.person_outline, size: 16, color: Colors.teal),
+                        const Icon(
+                          Icons.person_outline,
+                          size: 16,
+                          color: Colors.teal,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           'Assigned Nurse: ${patient['nurse']['name']}',
@@ -720,21 +792,22 @@ class _PatientListScreenState extends State<PatientListScreen> {
                       _currentStaff!['medicalstaffid'] == 66931 ||
                       _currentStaff!['medicalstaffid'] == 57492);
 
-              if (isGlobalAdmin) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const NurseDrPatientSummaryScreen(),
-                  ),
-                );
-              } else {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const NursePatientSummaryScreen(),
-                  ),
-                );
-              }
+              // if (isGlobalAdmin) {
+              //   Navigator.push(
+              //     context,
+              //     MaterialPageRoute(
+              //       builder: (context) => const NurseDrPatientSummaryScreen(),
+              //     ),
+              //   );
+              // } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NursePatientSummaryScreen(),
+                ),
+              );
+              //   }
+              // },
             },
           ),
           IconButton(
@@ -790,6 +863,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
                     ),
                   );
                 }
+                if (value == 'toggle_leave') _toggleMyLeaveStatus();
                 if (value == 'logout') _logout();
                 if (value == 'admin') {
                   Navigator.push(
@@ -935,6 +1009,28 @@ class _PatientListScreenState extends State<PatientListScreen> {
                     ],
                   ),
                 ),
+                PopupMenuItem<String>(
+                  value: 'toggle_leave',
+                  child: Row(
+                    children: [
+                      Icon(
+                        _currentStaff!['is_on_leave'] == true
+                            ? Icons.beach_access
+                            : Icons.work,
+                        color: _currentStaff!['is_on_leave'] == true
+                            ? Colors.orange
+                            : Colors.green,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        _currentStaff!['is_on_leave'] == true
+                            ? "Mark as Returned"
+                            : "Mark as On Leave",
+                      ),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem<String>(
                   value: 'logout',
                   child: Row(
@@ -1059,9 +1155,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                     elevation: 4,
                                     color: patient['outposition'] == true
                                         ? Colors.yellow.shade50
-                                        : patient['lastlab_notcollected'] == true
-                                            ? Colors.pink.shade50
-                                            : null,
+                                        : patient['lastlab_notcollected'] ==
+                                              true
+                                        ? Colors.pink.shade50
+                                        : null,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -1117,7 +1214,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                         ),
                                       ),
                                       subtitle: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             'ID: ${patient['pcid']}',
@@ -1125,7 +1223,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                               color: Colors.grey.shade600,
                                             ),
                                           ),
-                                          if (patient['nurse'] != null && patient['nurse']['name'] != null)
+                                          if (patient['nurse'] != null &&
+                                              patient['nurse']['name'] != null)
                                             Text(
                                               'Nurse: ${patient['nurse']['name']}',
                                               style: TextStyle(

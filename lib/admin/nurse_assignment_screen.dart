@@ -276,9 +276,24 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
 
     setState(() => _isSaving = true);
     try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      String changedBy = 'Unknown';
+      if (userId != null) {
+        try {
+          final staffData = await Supabase.instance.client
+              .from('staff')
+              .select('name')
+              .eq('userid', userId)
+              .maybeSingle();
+          if (staffData != null && staffData['name'] != null) {
+            changedBy = staffData['name'];
+          }
+        } catch (_) {}
+      }
+
       await Supabase.instance.client
           .from('staff')
-          .update({'is_on_leave': newStatus})
+          .update({'is_on_leave': newStatus, 'changby': changedBy})
           .eq('medicalstaffid', staffId);
 
       await _fetchData();

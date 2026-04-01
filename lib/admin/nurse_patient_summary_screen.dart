@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'nurse_assignment_screen.dart';
+import 'staff_on_leave_screen.dart';
+import '../common/patient_list_screen.dart';
 
 class NursePatientSummaryScreen extends StatefulWidget {
   const NursePatientSummaryScreen({super.key});
@@ -182,6 +184,18 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                 MaterialPageRoute(
                   builder: (context) =>
                       const NurseAssignmentScreen(isAdmin: false),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.beach_access),
+            tooltip: 'Staff on Leave',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const StaffOnLeaveScreen(),
                 ),
               );
             },
@@ -481,9 +495,43 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                                       Text('${index + 1}', style: textStyle),
                                     ),
                                     DataCell(
-                                      Text(
-                                        row['nurse_name']?.toString() ?? '-',
-                                        style: textStyle,
+                                      InkWell(
+                                        onTap: () {
+                                          final nurseName = row['nurse_name']?.toString() ?? 'Unknown';
+                                          int? staffId;
+                                          for (final key in ['medicalstaffid', 'staffid', 'nurse_id', 'nstaffid']) {
+                                            final id = int.tryParse((row[key] ?? '').toString());
+                                            if (id != null) {
+                                              staffId = id;
+                                              break;
+                                            }
+                                          }
+                                          if (staffId != null) {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => PatientListScreen(
+                                                  filterMode: PatientFilterMode.assignedToNurse,
+                                                  assignedNurseId: staffId,
+                                                  assignedNurseName: nurseName,
+                                                ),
+                                              ),
+                                            );
+                                          } else {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Nurse ID not found. Cannot filter.')),
+                                            );
+                                          }
+                                        },
+                                        child: Text(
+                                          row['nurse_name']?.toString() ?? '-',
+                                          style: textStyle.copyWith(
+                                            color: Colors.blue.shade700,
+                                            decoration: TextDecoration.underline,
+                                            decorationColor: Colors.blue.shade700,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                     DataCell(

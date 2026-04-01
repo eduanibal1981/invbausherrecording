@@ -7,6 +7,7 @@ import 'nurse_dr_patient_summary_screen.dart';
 import 'nurse_assignment_screen.dart';
 import 'main_schedule_config_screen.dart';
 import 'lab_requests_screen.dart';
+import 'staff_on_leave_screen.dart';
 
 class AdministrationScreen extends StatefulWidget {
   const AdministrationScreen({super.key});
@@ -529,6 +530,21 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
                   );
                 },
                 icon: Icons.science_outlined,
+              ),
+              const Divider(),
+              _buildActionTile(
+                title: 'Staff on Leave',
+                subtitle: 'View all staff members currently marked as on leave',
+                isLoading: false,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const StaffOnLeaveScreen(),
+                    ),
+                  );
+                },
+                icon: Icons.beach_access,
               ),
             ],
           ),
