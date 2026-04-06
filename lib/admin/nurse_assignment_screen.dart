@@ -27,6 +27,11 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
       0; // Count of patients whose nurse is on leave
   Set<int> _nursesOnLeaveIds = {}; // Set of nurse IDs currently on leave
 
+  // Staged changes: staffId -> List of assignments
+  Map<int, List<Map<String, dynamic>>> _stagedAdditions = {};
+  // staffId -> List of keys ('ghall-gday-gshift')
+  Map<int, Set<String>> _stagedDeletions = {};
+
   @override
   void initState() {
     super.initState();
@@ -57,14 +62,14 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
           .select('nstaffid')
           .eq('status', 'Active');
 
-      // 4. Fetch available hall/day/shift combinations from config
+      // 4. Fetch available hall/day/shift combinations from groupsofpatients where ismain = true
       final slotsResponse = await client
-          .from('hall_schedule_config')
-          .select('hallname, day_name, shift_name')
-          .eq('is_active', true)
-          .order('hallname')
-          .order('day_name')
-          .order('shift_name');
+          .from('groupsofpatients')
+          .select('ghall, gday, gshift')
+          .eq('ismain', true)
+          .order('ghall')
+          .order('gday')
+          .order('gshift');
 
       // Process data
       final nurses = List<Map<String, dynamic>>.from(nursesResponse);
@@ -131,68 +136,78 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
     }
   }
 
-  Future<void> _addAssignment(
+  void _addAssignment(
     int staffId,
     String hall,
     String day,
     String shift,
-  ) async {
-    setState(() => _isSaving = true);
-    try {
-      // Update the groupsofpatients table
-      await Supabase.instance.client
-          .from('groupsofpatients')
-          .update({'staffid': staffId, 'ismain': true})
-          .match({'ghall': hall, 'gshift': shift, 'gday': day});
+  ) {
+    setState(() {
+      final newAssignment = {
+        'ghall': hall,
+        'gday': day,
+        'gshift': shift,
+        'staffid': staffId,
+      };
+      _stagedAdditions[staffId] = (_stagedAdditions[staffId] ?? [])
+        ..add(newAssignment);
 
-      // Sync patient assignments
-      await Supabase.instance.client.rpc('sync_all_patients_staffid');
-
-      // Refresh data
-      await _fetchData();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Added $hall - $day - $shift'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error adding assignment: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
+      // If it was staged for deletion, remove it from deletions
+      final key = '$hall-$day-$shift';
+      _stagedDeletions[staffId]?.remove(key);
+    });
   }
 
-  Future<void> _removeAssignment(
+  void _revertAdd(int staffId, int index) {
+    setState(() {
+      _stagedAdditions[staffId]?.removeAt(index);
+    });
+  }
+
+  void _removeAssignment(
     int staffId,
     String hall,
     String day,
     String shift,
-  ) async {
+  ) {
+    setState(() {
+      final key = '$hall-$day-$shift';
+
+      // Check if it was a staged addition
+      final stagedIdx = _stagedAdditions[staffId]?.indexWhere(
+        (a) => a['ghall'] == hall && a['gday'] == day && a['gshift'] == shift,
+      );
+
+      if (stagedIdx != null && stagedIdx != -1) {
+        _stagedAdditions[staffId]?.removeAt(stagedIdx);
+      } else {
+        _stagedDeletions[staffId] = (_stagedDeletions[staffId] ?? {})..add(key);
+      }
+    });
+  }
+
+  void _revertDelete(int staffId, String key) {
+    setState(() {
+      _stagedDeletions[staffId]?.remove(key);
+    });
+  }
+
+  Future<void> _saveAllChanges() async {
+    if (_stagedAdditions.isEmpty && _stagedDeletions.isEmpty) return;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Remove Assignment'),
-        content: Text('Remove $hall - $day - $shift from this nurse?'),
+        title: const Text('Save Changes'),
+        content: const Text('Confirm sending all staged assignments to database?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove'),
+            child: const Text('Confirm Save'),
           ),
         ],
       ),
@@ -202,30 +217,56 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
 
     setState(() => _isSaving = true);
     try {
-      // Remove staffid from the groupsofpatients table
-      await Supabase.instance.client
-          .from('groupsofpatients')
-          .update({'staffid': null, 'ismain': false})
-          .match({'ghall': hall, 'gshift': shift, 'gday': day});
+      final client = Supabase.instance.client;
+
+      // 1. Process Deletions
+      for (var entry in _stagedDeletions.entries) {
+        final staffId = entry.key;
+        for (var key in entry.value) {
+          final parts = key.split('-');
+          final hall = parts[0];
+          final day = parts[1];
+          final shift = parts[2];
+
+          await client
+              .from('groupsofpatients')
+              .update({'staffid': null, 'ismain': false})
+              .match({'ghall': hall, 'gday': day, 'gshift': shift, 'staffid': staffId});
+
+          // Safety cleanup: ensure stale nurse IDs are removed for this slot.
+          await client
+              .from('patients')
+              .update({'nstaffid': null})
+              .match({'hall_main': hall, 'day_main': day, 'shift_main': shift})
+              .eq('nstaffid', staffId);
+        }
+      }
+
+      // 2. Process Additions
+      for (var additions in _stagedAdditions.values) {
+        for (var a in additions) {
+          await client
+              .from('groupsofpatients')
+              .update({'staffid': a['staffid'], 'ismain': true})
+              .match({'ghall': a['ghall'], 'gday': a['gday'], 'gshift': a['gshift']});
+        }
+      }
 
       // Sync patient assignments
-      await Supabase.instance.client.rpc('sync_all_patients_staffid');
+      await client.rpc('sync_all_patients_staffid');
 
-      // Safety cleanup: ensure stale nurse IDs are removed for this slot.
-      await Supabase.instance.client
-          .from('patients')
-          .update({'nstaffid': null})
-          .match({'hall_main': hall, 'day_main': day, 'shift_main': shift})
-          .eq('nstaffid', staffId);
+      setState(() {
+        _stagedAdditions.clear();
+        _stagedDeletions.clear();
+      });
 
-      // Refresh data
       await _fetchData();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Removed $hall - $day - $shift'),
-            backgroundColor: Colors.green, // TODO: Change to orange
+          const SnackBar(
+            content: Text('All changes saved successfully'),
+            backgroundColor: Colors.green,
           ),
         );
       }
@@ -233,7 +274,7 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error removing assignment: $e'),
+            content: Text('Error saving changes: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -338,17 +379,27 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
   }
 
   void _showAddAssignmentDialog(int staffId, String nurseName) {
-    // Get currently assigned slots for this nurse
-    final currentAssignments = _nurseAssignments[staffId] ?? [];
-    final assignedKeys = currentAssignments
+    // Get currently assigned slots for this nurse (real + staged)
+    final realAssignments = _nurseAssignments[staffId] ?? [];
+    final stagedAdds = _stagedAdditions[staffId] ?? [];
+    final deletedKeys = _stagedDeletions[staffId] ?? {};
+
+    final currentAssignmentsKeys = realAssignments
+        .where((a) => !deletedKeys.contains('${a['ghall']}-${a['gday']}-${a['gshift']}'))
         .map((a) => '${a['ghall']}-${a['gday']}-${a['gshift']}')
-        .toSet();
+        .toList();
+
+    currentAssignmentsKeys.addAll(
+      stagedAdds.map((a) => '${a['ghall']}-${a['gday']}-${a['gshift']}'),
+    );
+
+    final assignedKeysSet = currentAssignmentsKeys.toSet();
 
     // Filter available slots (not already assigned to this nurse)
     final availableForNurse = _availableSlots.where((slot) {
       final key =
-          '${slot['hallname']}-${slot['day_name']}-${slot['shift_name']}';
-      return !assignedKeys.contains(key);
+          '${slot['ghall']}-${slot['gday']}-${slot['gshift']}';
+      return !assignedKeysSet.contains(key);
     }).toList();
 
     if (availableForNurse.isEmpty) {
@@ -367,7 +418,7 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
 
     // Get unique halls, days, shifts
     final halls =
-        availableForNurse.map((s) => s['hallname'] as String).toSet().toList()
+        availableForNurse.map((s) => s['ghall'] as String).toSet().toList()
           ..sort();
 
     showDialog(
@@ -377,8 +428,8 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
           // Filter days based on selected hall
           final daysForHall = selectedHall != null
               ? availableForNurse
-                    .where((s) => s['hallname'] == selectedHall)
-                    .map((s) => s['day_name'] as String)
+                    .where((s) => s['ghall'] == selectedHall)
+                    .map((s) => s['gday'] as String)
                     .toSet()
                     .toList()
               : <String>[];
@@ -389,10 +440,10 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
               ? availableForNurse
                     .where(
                       (s) =>
-                          s['hallname'] == selectedHall &&
-                          s['day_name'] == selectedDay,
+                          s['ghall'] == selectedHall &&
+                          s['gday'] == selectedDay,
                     )
-                    .map((s) => s['shift_name'] as String)
+                    .map((s) => s['gshift'] as String)
                     .toSet()
                     .toList()
               : <String>[];
@@ -515,6 +566,19 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
         actions: [
+          if (_stagedAdditions.isNotEmpty || _stagedDeletions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: TextButton.icon(
+                onPressed: _isSaving ? null : _saveAllChanges,
+                icon: const Icon(Icons.cloud_upload, color: Colors.white),
+                label: const Text('Save All', style: TextStyle(color: Colors.white)),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.orange.shade800,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _isLoading ? null : _fetchData,
@@ -915,55 +979,90 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
                   ),
                 ),
               )
-            else
+            else ...[
+              // Existing Assignments
               ...assignments.map((assignment) {
                 final hall = assignment['ghall'] ?? '';
                 final day = assignment['gday'] ?? '';
                 final shift = assignment['gshift'] ?? '';
+                final key = '$hall-$day-$shift';
+                final isDeleted = _stagedDeletions[staffId]?.contains(key) ?? false;
 
                 return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(color: Colors.grey.shade200),
-                    ),
+                    color: isDeleted ? Colors.red.shade50 : null,
+                    border: Border(top: BorderSide(color: Colors.grey.shade200)),
                   ),
                   child: Row(
                     children: [
                       Icon(
                         Icons.meeting_room,
                         size: 18,
-                        color: Colors.grey.shade600,
+                        color: isDeleted ? Colors.red : Colors.grey.shade600,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           '$hall  •  $day  •  $shift',
-                          style: const TextStyle(fontSize: 14),
+                          style: TextStyle(
+                            fontSize: 14,
+                            decoration: isDeleted ? TextDecoration.lineThrough : null,
+                            color: isDeleted ? Colors.red : null,
+                          ),
+                        ),
+                      ),
+                      if (isDeleted)
+                        IconButton(
+                          icon: const Icon(Icons.undo, color: Colors.blue, size: 20),
+                          onPressed: () => _revertDelete(staffId, key),
+                          tooltip: 'Restore',
+                        )
+                      else
+                        IconButton(
+                          icon: Icon(
+                            Icons.remove_circle_outline,
+                            color: widget.isAdmin ? Colors.red.shade400 : Colors.grey,
+                            size: 22,
+                          ),
+                          onPressed: widget.isAdmin
+                              ? () => _removeAssignment(staffId, hall, day, shift)
+                              : null,
+                        ),
+                    ],
+                  ),
+                );
+              }),
+              // Staged Additions
+              ...(_stagedAdditions[staffId] ?? []).asMap().entries.map((entry) {
+                final idx = entry.key;
+                final a = entry.value;
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: Colors.yellow.shade50,
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.add_circle, size: 18, color: Colors.orange),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${a['ghall']}  •  ${a['gday']}  •  ${a['gshift']} (New)',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                       ),
                       IconButton(
-                        icon: Icon(
-                          Icons.remove_circle_outline,
-                          color: widget.isAdmin
-                              ? Colors.red.shade400
-                              : Colors.grey,
-                          size: 22,
-                        ),
-                        tooltip: widget.isAdmin ? 'Remove' : 'Admin only',
-                        onPressed: widget.isAdmin
-                            ? () => _removeAssignment(staffId, hall, day, shift)
-                            : null,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                        icon: const Icon(Icons.cancel, color: Colors.grey, size: 20),
+                        onPressed: () => _revertAdd(staffId, idx),
+                        tooltip: 'Remove',
                       ),
                     ],
                   ),
                 );
               }),
+            ],
 
             // Footer with patient count
             Container(

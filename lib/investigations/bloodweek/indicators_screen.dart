@@ -45,8 +45,21 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
         },
       );
 
+      final pthResponse = await Supabase.instance.client.rpc('get_pth_summary');
+
       setState(() {
         _indicators = List<Map<String, dynamic>>.from(response);
+
+        if (pthResponse != null && (pthResponse as List).isNotEmpty) {
+          final data = pthResponse[0];
+          _indicators.insert(0, {
+            'indicator_name': 'Parathyroid (> 81)',
+            'total_tested': data['total_active'],
+            'target_met': data['high_pth_count'],
+            'percentage': data['percentage'],
+            'is_pth': true,
+          });
+        }
         _isLoading = false;
       });
     } catch (e) {
@@ -186,13 +199,27 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
                       final met = item['target_met'];
                       final percentage = (item['percentage'] as num).toDouble();
 
+                      final isPth = item['is_pth'] == true;
+
                       Color progressColor;
-                      if (percentage >= 80) {
-                        progressColor = Colors.green;
-                      } else if (percentage >= 50) {
-                        progressColor = Colors.orange;
+                      if (isPth) {
+                        // For high PTH, lower percentage is better
+                        if (percentage >= 50) {
+                          progressColor = Colors.red;
+                        } else if (percentage >= 25) {
+                          progressColor = Colors.orange;
+                        } else {
+                          progressColor = Colors.green;
+                        }
                       } else {
-                        progressColor = Colors.red;
+                        // For target met indicators, higher percentage is better
+                        if (percentage >= 80) {
+                          progressColor = Colors.green;
+                        } else if (percentage >= 50) {
+                          progressColor = Colors.orange;
+                        } else {
+                          progressColor = Colors.red;
+                        }
                       }
 
                       return Card(
@@ -244,17 +271,21 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
                                     MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
-                                    'Patients meeting target: $met',
+                                    isPth
+                                        ? 'Patients with High PTH: $met'
+                                        : 'Patients meeting target: $met',
                                     style: TextStyle(
                                       color: Colors.grey.shade700,
                                     ),
                                   ),
                                   Text(
-                                    (_useActivePatientsTotal &&
-                                            name != 'Kt/V >= 1.2' &&
-                                            name != 'URR >= 65%')
+                                    isPth
                                         ? 'Total active: $total'
-                                        : 'Total tested: $total',
+                                        : (_useActivePatientsTotal &&
+                                                name != 'Kt/V >= 1.2' &&
+                                                name != 'URR >= 65%')
+                                            ? 'Total active: $total'
+                                            : 'Total tested: $total',
                                     style: TextStyle(
                                       color: Colors.grey.shade700,
                                     ),
