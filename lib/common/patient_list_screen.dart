@@ -42,7 +42,8 @@ class PatientListScreen extends StatefulWidget {
 class _PatientListScreenState extends State<PatientListScreen> {
   // Filters
   Map<String, dynamic> _filters = {};
-  List<int>? _filteredPcids;
+  Set<int>? _schedulePcids;
+  Set<int>? _abnormalityPcids;
   Set<int>? _recordedLabMonthPcids;
   bool _isLoadingFilter = false;
 
@@ -60,6 +61,12 @@ class _PatientListScreenState extends State<PatientListScreen> {
   Map<int, String?> _bwEnteredBy = {};
   Map<int, bool> _bwIsCollected = {};
   Map<int, String?> _bwMonth = {};
+
+  // For sorting abnormalities "Show Rest"
+  Map<int, double?> _latestLabHb = {};
+  Map<int, double?> _latestLabKtv = {};
+  Map<int, double?> _latestLabUrr = {};
+  bool _showRestLabAbnormalities = false;
 
   // Upload Queue Listener
   final BackgroundUploadService _uploadService = BackgroundUploadService();
@@ -167,6 +174,23 @@ class _PatientListScreenState extends State<PatientListScreen> {
       _bwMonth = {
         for (var item in list) item['pcid'] as int: item['bw_month'] as String?,
       };
+
+      final labsResponse = await Supabase.instance.client.rpc(
+        'get_latest_labs',
+      );
+      final labsList = List<Map<String, dynamic>>.from(labsResponse);
+      for (var item in labsList) {
+        final pcid = item['pcid'] as int;
+        _latestLabHb[pcid] = item['cbchb'] is num
+            ? (item['cbchb'] as num).toDouble()
+            : null;
+        _latestLabKtv[pcid] = item['effktv'] is num
+            ? (item['effktv'] as num).toDouble()
+            : null;
+        _latestLabUrr[pcid] = item['effurr'] is num
+            ? (item['effurr'] as num).toDouble()
+            : null;
+      }
     } catch (e) {
       debugPrint('Error fetching BW status: $e');
     }
@@ -290,8 +314,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
   Future<void> _applyFilters() async {
     if (_filters.isEmpty) {
       setState(() {
-        _filteredPcids = null;
+        _schedulePcids = null;
+        _abnormalityPcids = null;
         _recordedLabMonthPcids = null;
+        _showRestLabAbnormalities = false;
       });
       return;
     }
@@ -328,6 +354,12 @@ class _PatientListScreenState extends State<PatientListScreen> {
           rpcName = 'get_patients_with_rising_po4';
         } else if (labAbnormality == 'pth_rising') {
           rpcName = 'get_patients_with_rising_pth';
+        } else if (labAbnormality == 'ca_abnormal') {
+          rpcName = 'get_patients_with_abnormal_ca';
+        } else if (labAbnormality == 'ktv_dropping') {
+          rpcName = 'get_patients_with_dropping_ktv';
+        } else if (labAbnormality == 'urr_dropping') {
+          rpcName = 'get_patients_with_dropping_urr';
         }
 
         if (rpcName.isNotEmpty) {
@@ -338,16 +370,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
         }
       }
 
-      List<int>? finalPcids;
-      if (schedulePcids != null && labAbnormalityPcids != null) {
-        finalPcids = schedulePcids.intersection(labAbnormalityPcids).toList();
-      } else if (schedulePcids != null) {
-        finalPcids = schedulePcids.toList();
-      } else if (labAbnormalityPcids != null) {
-        finalPcids = labAbnormalityPcids.toList();
-      } else {
-        finalPcids = null;
-      }
+      // We no longer combine them into finalPcids. We store them separately.
 
       Set<int>? recordedMonthPcids;
       final labFilter = _filters['labFilter'];
@@ -377,8 +400,10 @@ class _PatientListScreenState extends State<PatientListScreen> {
       }
 
       setState(() {
-        _filteredPcids = finalPcids;
+        _schedulePcids = schedulePcids;
+        _abnormalityPcids = labAbnormalityPcids;
         _recordedLabMonthPcids = recordedMonthPcids;
+        _showRestLabAbnormalities = false;
       });
     } catch (e) {
       if (mounted) {
@@ -424,7 +449,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
     final currentMonth = DateFormat('MMMM').format(DateTime.now());
 
     // Single iteration with combined conditions
-    return allPatients.where((patient) {
+    var filtered = allPatients.where((patient) {
       // 0. Special Filter Mode (from navigation)
       if (widget.filterMode == PatientFilterMode.unassigned) {
         // Only show patients with no nurse assigned
@@ -449,9 +474,19 @@ class _PatientListScreenState extends State<PatientListScreen> {
       }
 
       // 1. Schedule Filters
-      if (_filteredPcids != null &&
-          !_filteredPcids!.contains(patient['pcid'])) {
+      if (_schedulePcids != null &&
+          !_schedulePcids!.contains(patient['pcid'])) {
         return false;
+      }
+
+      // 1.5 Lab Abnormality Filters
+      if (_abnormalityPcids != null) {
+        bool hasAbnormality = _abnormalityPcids!.contains(patient['pcid']);
+        if (_showRestLabAbnormalities) {
+          if (hasAbnormality) return false;
+        } else {
+          if (!hasAbnormality) return false;
+        }
       }
 
       // 2. My Patients Filter (Skip if special filter mode is active)
@@ -546,6 +581,26 @@ class _PatientListScreenState extends State<PatientListScreen> {
 
       return true;
     }).toList();
+
+    if (_showRestLabAbnormalities && _filters['labAbnormalityFilter'] != null) {
+      final labAbnormality = _filters['labAbnormalityFilter'];
+      if (labAbnormality == 'urr_dropping' ||
+          labAbnormality == 'ktv_dropping') {
+        filtered.sort(
+          (a, b) => (_latestLabUrr[b['pcid']] ?? -100.0).compareTo(
+            _latestLabUrr[a['pcid']] ?? -100.0,
+          ),
+        );
+      } else if (labAbnormality == 'hb_dropping') {
+        filtered.sort(
+          (a, b) => (_latestLabHb[b['pcid']] ?? -100.0).compareTo(
+            _latestLabHb[a['pcid']] ?? -100.0,
+          ),
+        );
+      }
+    }
+
+    return filtered;
   }
 
   String _getAppBarTitle() {
@@ -1078,7 +1133,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
                     onPressed: () {
                       setState(() {
                         _filters = {};
-                        _filteredPcids = null;
+                        _schedulePcids = null;
+                        _abnormalityPcids = null;
+                        _showRestLabAbnormalities = false;
                       });
                     },
                   ),
@@ -1126,13 +1183,43 @@ class _PatientListScreenState extends State<PatientListScreen> {
                         horizontal: 16,
                       ),
                       color: Colors.blue.shade50,
-                      child: Text(
-                        'Total Patients: ${patients.length}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue.shade900,
-                        ),
-                        textAlign: TextAlign.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _filters['labAbnormalityFilter'] != null &&
+                                      allPatients.isNotEmpty
+                                  ? 'Total Patients: ${patients.length} - of percentage ${(patients.length / allPatients.length * 100).toStringAsFixed(1)}%'
+                                  : 'Total Patients: ${patients.length}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade900,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          if (_filters['labAbnormalityFilter'] != null) ...[
+                            const SizedBox(width: 4),
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _showRestLabAbnormalities =
+                                      !_showRestLabAbnormalities;
+                                });
+                              },
+                              child: Text(
+                                _showRestLabAbnormalities
+                                    ? ' - Show Filtered'
+                                    : ' - Show Rest',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color.fromARGB(255, 20, 114, 7),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     Expanded(
@@ -1382,6 +1469,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
         if (value == 'hb_dropping') return 'Labs: Hb < 10 & Dropped';
         if (value == 'po4_rising') return 'Labs: Po4 > 1.8 & Rose';
         if (value == 'pth_rising') return 'Labs: PTH > 59 & Rose';
+        if (value == 'ca_abnormal') return 'Labs: Ca < 2.1 or > 2.6';
+        if (value == 'ktv_dropping') return 'Labs: KT/V >= 1.2 & Dropped';
+        if (value == 'urr_dropping') return 'Labs: URR < 65 & Dropped';
         return 'Labs: $value';
       case 'outPatientsOnly':
         return 'Out patients';

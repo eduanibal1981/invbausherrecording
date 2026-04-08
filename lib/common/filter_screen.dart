@@ -391,6 +391,18 @@ class _FilterScreenState extends State<FilterScreen> {
                         value: 'pth_rising',
                         child: Text('PTH > 59 & Rose'),
                       ),
+                      DropdownMenuItem(
+                        value: 'ca_abnormal',
+                        child: Text('Ca < 2.1 or > 2.6'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'ktv_dropping',
+                        child: Text('KT/V < 1.2 & Dropped'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'urr_dropping',
+                        child: Text('URR < 65 & Dropped'),
+                      ),
                     ],
                     onChanged: (val) =>
                         setState(() => _labAbnormalityFilter = val),
