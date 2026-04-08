@@ -360,6 +360,8 @@ class _PatientListScreenState extends State<PatientListScreen> {
           rpcName = 'get_patients_with_dropping_ktv';
         } else if (labAbnormality == 'urr_dropping') {
           rpcName = 'get_patients_with_dropping_urr';
+        } else if (labAbnormality == 'tsat_low') {
+          rpcName = 'get_patients_with_low_tsat';
         }
 
         if (rpcName.isNotEmpty) {
@@ -1470,8 +1472,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
         if (value == 'po4_rising') return 'Labs: Po4 > 1.8 & Rose';
         if (value == 'pth_rising') return 'Labs: PTH > 59 & Rose';
         if (value == 'ca_abnormal') return 'Labs: Ca < 2.1 or > 2.6';
-        if (value == 'ktv_dropping') return 'Labs: KT/V >= 1.2 & Dropped';
+        if (value == 'ktv_dropping') return 'Labs: KT/V < 1.2 & Dropped';
         if (value == 'urr_dropping') return 'Labs: URR < 65 & Dropped';
+        if (value == 'tsat_low') return 'Labs: Transferrin Sat < 20%';
         return 'Labs: $value';
       case 'outPatientsOnly':
         return 'Out patients';

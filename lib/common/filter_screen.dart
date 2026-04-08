@@ -403,6 +403,10 @@ class _FilterScreenState extends State<FilterScreen> {
                         value: 'urr_dropping',
                         child: Text('URR < 65 & Dropped'),
                       ),
+                      DropdownMenuItem(
+                        value: 'tsat_low',
+                        child: Text('Transferrin Sat < 20%'),
+                      ),
                     ],
                     onChanged: (val) =>
                         setState(() => _labAbnormalityFilter = val),
