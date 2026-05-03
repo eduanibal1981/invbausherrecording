@@ -634,6 +634,11 @@ class _PatientListScreenState extends State<PatientListScreen> {
       text: patient['lastbwnot_why'] ?? '',
     );
 
+    final scheduleFuture = Supabase.instance.client
+        .from('schedules')
+        .select('hallname, day, shift')
+        .eq('pcid', patient['pcid']);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -683,7 +688,47 @@ class _PatientListScreenState extends State<PatientListScreen> {
                       ],
                     ),
                   ],
-                  const SizedBox(height: 16),
+                  const Divider(height: 32),
+                  const Text('Schedule', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  FutureBuilder(
+                    future: scheduleFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      if (snapshot.hasError) {
+                        return Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Text('Error loading schedule: ${snapshot.error}', style: const TextStyle(color: Colors.red)),
+                        );
+                      }
+                      final data = snapshot.data as List<dynamic>?;
+                      if (data == null || data.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: Text('No schedule found.'),
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: data.map((sch) {
+                          return ListTile(
+                            dense: true,
+                            visualDensity: VisualDensity.compact,
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.calendar_today, color: Colors.blueGrey, size: 20),
+                            title: Text('${sch['day']} - ${sch['shift']}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                            subtitle: Text('Hall: ${sch['hallname']}', style: const TextStyle(color: Colors.black54)),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                  const Divider(height: 32),
                   SwitchListTile(
                     title: const Text('Out of Position'),
                     subtitle: const Text(
