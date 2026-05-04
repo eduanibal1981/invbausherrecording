@@ -12,6 +12,7 @@ import '../screens/pending_uploads_screen.dart';
 import '../services/background_upload_service.dart';
 import '../vascandecg/vascular_management_screen.dart';
 import '../investigations/bloodweek/indicators_screen.dart';
+import 'ai_research_screen.dart';
 
 /// Filter mode for patient list when navigating from other screens
 enum PatientFilterMode {
@@ -365,7 +366,22 @@ class _PatientListScreenState extends State<PatientListScreen> {
         }
 
         if (rpcName.isNotEmpty) {
-          final abnResponse = await Supabase.instance.client.rpc(rpcName);
+          final targetMonth = _filters['labAbnormalityMonthFilter'];
+          Map<String, dynamic>? params;
+          if (targetMonth != null && targetMonth != 'Latest') {
+            final parts = targetMonth.split(' ');
+            if (parts.length == 2) {
+              params = {
+                'target_month': parts[0],
+                'target_year': int.tryParse(parts[1]) ?? 2026,
+              };
+            }
+          }
+          
+          final abnResponse = await Supabase.instance.client.rpc(
+            rpcName,
+            params: params,
+          );
           labAbnormalityPcids = (abnResponse as List)
               .map((e) => int.parse(e.toString()))
               .toSet();
@@ -965,6 +981,14 @@ class _PatientListScreenState extends State<PatientListScreen> {
                     ),
                   );
                 }
+                if (value == 'ai_research') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AIResearchScreen(),
+                    ),
+                  );
+                }
                 if (value == 'toggle_leave') _toggleMyLeaveStatus();
                 if (value == 'logout') _logout();
                 if (value == 'admin') {
@@ -1108,6 +1132,16 @@ class _PatientListScreenState extends State<PatientListScreen> {
                       ),
                       SizedBox(width: 12),
                       Text("About"),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'ai_research',
+                  child: Row(
+                    children: [
+                      Icon(Icons.auto_awesome, color: Colors.blueGrey, size: 20),
+                      SizedBox(width: 12),
+                      Text("AI Research"),
                     ],
                   ),
                 ),

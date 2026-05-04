@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'schedule_labs_report_screen.dart';
 
 class FilterScreen extends StatefulWidget {
   final Map<String, dynamic> initialFilters;
@@ -20,6 +21,7 @@ class _FilterScreenState extends State<FilterScreen> {
   String? _vaccessFilter; // null = Any, or specific access type
   String?
   _labAbnormalityFilter; // null = Any, 'hb_dropping', 'po4_rising', 'pth_rising'
+  String? _labAbnormalityMonthFilter; // null = Latest, or 'Month 2026'
   bool _outPatientsOnly = false;
   bool _unassignedNurseOnly = false;
   bool _hasSearchText = false;
@@ -42,6 +44,7 @@ class _FilterScreenState extends State<FilterScreen> {
     _ecgFilter = widget.initialFilters['ecgFilter'];
     _vaccessFilter = widget.initialFilters['vaccessFilter'];
     _labAbnormalityFilter = widget.initialFilters['labAbnormalityFilter'];
+    _labAbnormalityMonthFilter = widget.initialFilters['labAbnormalityMonthFilter'];
     _outPatientsOnly = widget.initialFilters['outPatientsOnly'] == true;
     _unassignedNurseOnly = widget.initialFilters['unassignedNurseOnly'] == true;
   }
@@ -72,6 +75,8 @@ class _FilterScreenState extends State<FilterScreen> {
       if (_vaccessFilter != null) 'vaccessFilter': _vaccessFilter,
       if (_labAbnormalityFilter != null)
         'labAbnormalityFilter': _labAbnormalityFilter,
+      if (_labAbnormalityMonthFilter != null)
+        'labAbnormalityMonthFilter': _labAbnormalityMonthFilter,
       if (_outPatientsOnly) 'outPatientsOnly': true,
       if (_unassignedNurseOnly) 'unassignedNurseOnly': true,
     });
@@ -151,13 +156,33 @@ class _FilterScreenState extends State<FilterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Schedule Filters',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Schedule Filters',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal,
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.print, color: (_hallName != null && _day != null && _shift != null) ? Colors.teal : Colors.grey),
+                        onPressed: (_hallName != null && _day != null && _shift != null) ? () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ScheduleLabsReportScreen(
+                                hallName: _hallName,
+                                day: _day,
+                                shift: _shift,
+                              ),
+                            ),
+                          );
+                        } : null,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
@@ -362,54 +387,106 @@ class _FilterScreenState extends State<FilterScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: _labAbnormalityFilter,
-                    decoration: InputDecoration(
-                      labelText: 'Filter By Lab Trends',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: DropdownButtonFormField<String>(
+                          value: _labAbnormalityFilter,
+                          decoration: InputDecoration(
+                            labelText: 'Filter By Lab Trends',
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 0,
+                            ),
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: null, child: Text('Any')),
+                            DropdownMenuItem(
+                              value: 'hb_dropping',
+                              child: Text('Hb < 10 & Dropped'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'po4_rising',
+                              child: Text('Po4 > 1.8 & Rose'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'pth_rising',
+                              child: Text('PTH > 59 & Rose'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'ca_abnormal',
+                              child: Text('Ca < 2.1 or > 2.6'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'ktv_dropping',
+                              child: Text('KT/V < 1.2 & Dropped'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'urr_dropping',
+                              child: Text('URR < 65 & Dropped'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'tsat_low',
+                              child: Text('Transferrin Sat < 20%'),
+                            ),
+                          ],
+                          onChanged: (val) =>
+                              setState(() => _labAbnormalityFilter = val),
+                        ),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 0,
-                      ),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Any')),
-                      DropdownMenuItem(
-                        value: 'hb_dropping',
-                        child: Text('Hb < 10 & Dropped'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'po4_rising',
-                        child: Text('Po4 > 1.8 & Rose'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'pth_rising',
-                        child: Text('PTH > 59 & Rose'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'ca_abnormal',
-                        child: Text('Ca < 2.1 or > 2.6'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'ktv_dropping',
-                        child: Text('KT/V < 1.2 & Dropped'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'urr_dropping',
-                        child: Text('URR < 65 & Dropped'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'tsat_low',
-                        child: Text('Transferrin Sat < 20%'),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: DropdownButtonFormField<String>(
+                          value: _labAbnormalityMonthFilter,
+                          decoration: InputDecoration(
+                            labelText: 'Target Month',
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 0,
+                            ),
+                          ),
+                          items: [
+                            const DropdownMenuItem(value: null, child: Text('Latest')),
+                            ...[
+                              'January',
+                              'February',
+                              'March',
+                              'April',
+                              'May',
+                              'June',
+                              'July',
+                              'August',
+                              'September',
+                              'October',
+                              'November',
+                              'December',
+                            ].map(
+                              (m) => DropdownMenuItem(
+                                value: '$m 2026',
+                                child: Text('$m 2026'),
+                              ),
+                            ),
+                          ],
+                          onChanged: (val) =>
+                              setState(() => _labAbnormalityMonthFilter = val),
+                        ),
                       ),
                     ],
-                    onChanged: (val) =>
-                        setState(() => _labAbnormalityFilter = val),
                   ),
                 ],
               ),

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'bloodweek_controller.dart';
 import '../medications_screen.dart';
 
@@ -537,6 +540,16 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
             validator: validator,
           ),
         ),
+        if (key == 'cbchb') ...[
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.show_chart, color: Colors.blue),
+            onPressed: () => _showChartDialog(context, key, label),
+            tooltip: 'View Chart',
+            constraints: const BoxConstraints(),
+            padding: const EdgeInsets.all(4),
+          ),
+        ],
         if (prevText != null) ...[
           const SizedBox(width: 8),
           Text(
@@ -548,6 +561,177 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  Future<void> _showChartDialog(BuildContext context, String key, String label) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final response = await Supabase.instance.client
+          .from('bloodweek')
+          .select('dateofresult, created_at, $key')
+          .eq('pcid', _currentPatient['pcid'])
+          .not(key, 'is', null)
+          .order('created_at', ascending: false)
+          .limit(5);
+
+      if (!context.mounted) return;
+      Navigator.pop(context); // pop loading
+
+      final dataList = List<Map<String, dynamic>>.from(response);
+      if (dataList.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No data available')),
+        );
+        return;
+      }
+
+      // Reverse to chronological order for the chart (left to right)
+      final chronData = dataList.reversed.toList();
+
+      showDialog(
+        context: context,
+        builder: (ctx) => _buildChartDialogWidget(ctx, label, key, chronData),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.pop(context); // pop loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
+  Widget _buildChartDialogWidget(
+    BuildContext context,
+    String label,
+    String key,
+    List<Map<String, dynamic>> dataList,
+  ) {
+    List<FlSpot> spots = [];
+    List<String> xLabels = [];
+    double minY = double.infinity;
+    double maxY = double.negativeInfinity;
+
+    for (int i = 0; i < dataList.length; i++) {
+      final item = dataList[i];
+      final val = (item[key] as num).toDouble();
+      spots.add(FlSpot(i.toDouble(), val));
+
+      if (val < minY) minY = val;
+      if (val > maxY) maxY = val;
+
+      final dateStr = item['dateofresult'] ?? item['created_at'] ?? '';
+      if (dateStr.isNotEmpty) {
+        try {
+          final dt = DateTime.parse(dateStr);
+          xLabels.add(DateFormat('MMM yy').format(dt));
+        } catch (_) {
+          xLabels.add('Item $i');
+        }
+      } else {
+        xLabels.add('Item $i');
+      }
+    }
+
+    if (minY == double.infinity) minY = 0;
+    if (maxY == double.negativeInfinity) maxY = 10;
+    if (minY == maxY) {
+      minY -= 1;
+      maxY += 1;
+    }
+
+    return AlertDialog(
+      title: Text('Last ${dataList.length} Results: $label'),
+      content: SizedBox(
+        width: 500,
+        height: 350,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 20, right: 30, left: 10),
+          child: LineChart(
+            LineChartData(
+              gridData: const FlGridData(show: true),
+              titlesData: FlTitlesData(
+                show: true,
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 40,
+                    interval: 1,
+                    getTitlesWidget: (value, meta) {
+                      final i = value.toInt();
+                      if (i >= 0 && i < xLabels.length) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 10.0),
+                          child: Transform.rotate(
+                            angle: -0.5,
+                            child: Text(
+                              xLabels[i],
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          ),
+                        );
+                      }
+                      return const Text('');
+                    },
+                  ),
+                ),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 40,
+                    getTitlesWidget: (value, meta) {
+                      return Text(
+                        value.toStringAsFixed(1),
+                        style: const TextStyle(fontSize: 10),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              borderData: FlBorderData(
+                show: true,
+                border: Border.all(color: const Color(0xff37434d), width: 1),
+              ),
+              minX: 0,
+              maxX: (dataList.length - 1).toDouble(),
+              minY: minY - (maxY - minY) * 0.1,
+              maxY: maxY + (maxY - minY) * 0.1,
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  isCurved: true,
+                  color: Colors.blue,
+                  barWidth: 3,
+                  isStrokeCapRound: true,
+                  dotData: const FlDotData(show: true),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    color: Colors.blue.withOpacity(0.2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
       ],
     );
   }
