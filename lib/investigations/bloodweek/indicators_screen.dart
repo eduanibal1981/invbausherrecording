@@ -15,7 +15,6 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
   String _selectedVAccess = 'All';
 
   bool _isLoading = false;
-  bool _useActivePatientsTotal = true;
   List<Map<String, dynamic>> _indicators = [];
   String? _errorMessage;
 
@@ -32,23 +31,61 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
     });
 
     try {
-      final rpcName = _useActivePatientsTotal
-          ? 'get_bloodweek_indicators_active'
-          : 'get_bloodweek_indicators';
+      // Fetch active patients with the selected vaccess
+      final patientsResponse = await Supabase.instance.client
+          .from('patients')
+          .select('pcid, vaccess')
+          .eq('status', 'Active');
+          
+      final activePcids = (patientsResponse as List)
+          .where((p) => _selectedVAccess == 'All' || p['vaccess'] == _selectedVAccess)
+          .map((p) => p['pcid'] as int)
+          .toSet();
+          
+      final totalActive = activePcids.length;
 
-      final response = await Supabase.instance.client.rpc(
-        rpcName,
-        params: {
-          'p_year': _selectedYear,
-          'p_month': _selectedMonth,
-          'p_vaccess': _selectedVAccess,
-        },
-      );
+      // Define the single source of truth RPCs
+      final rpcs = [
+        {'name': 'get_patients_with_abnormal_ca', 'title': 'Abnormal Ca (< 2.1 or > 2.6)'},
+        {'name': 'get_patients_with_rising_po4', 'title': 'Po4 > 1.8 and rose'},
+        {'name': 'get_patients_with_dropping_ktv', 'title': 'Kt/V < 1.2 and dropped'},
+        {'name': 'get_patients_with_dropping_urr', 'title': 'URR < 65 and dropped'},
+        {'name': 'get_patients_with_dropping_hb', 'title': 'Hb < 10 and dropped'},
+      ];
+
+      final List<Map<String, dynamic>> newIndicators = [];
+
+      for (final rpc in rpcs) {
+        final response = await Supabase.instance.client.rpc(
+          rpc['name']!,
+          params: {
+            'target_year': _selectedYear,
+            'target_month': _selectedMonth,
+          },
+        );
+        
+        // Some RPCs might return null if empty, so handle safely
+        final listResponse = (response as List?) ?? [];
+        final pcids = listResponse.map((e) {
+          if (e is Map) return int.parse(e.values.first.toString());
+          return int.parse(e.toString());
+        }).toSet();
+        final metCount = pcids.intersection(activePcids).length;
+        
+        final percentage = totalActive > 0 ? (metCount / totalActive) * 100 : 0.0;
+        
+        newIndicators.add({
+          'indicator_name': rpc['title'],
+          'total_tested': totalActive,
+          'target_met': metCount,
+          'percentage': double.parse(percentage.toStringAsFixed(2)),
+        });
+      }
 
       final pthResponse = await Supabase.instance.client.rpc('get_pth_summary');
 
       setState(() {
-        _indicators = List<Map<String, dynamic>>.from(response);
+        _indicators = newIndicators;
 
         if (pthResponse != null && (pthResponse as List).isNotEmpty) {
           final data = pthResponse[0];
@@ -156,27 +193,6 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
               },
             ),
           ),
-          Container(
-            color: Colors.teal.shade50,
-            child: SwitchListTile(
-              title: const Text(
-                'Calculate percentage from total ACTIVE patients',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-              ),
-              subtitle: Text(
-                _useActivePatientsTotal
-                    ? 'Current: Target Met / All Active Patients'
-                    : 'Current: Target Met / Patients Tested',
-                style: const TextStyle(fontSize: 12),
-              ),
-              value: _useActivePatientsTotal,
-              activeThumbColor: Colors.teal,
-              onChanged: (val) {
-                setState(() => _useActivePatientsTotal = val);
-                _fetchIndicators();
-              },
-            ),
-          ),
           if (_isLoading) const LinearProgressIndicator(),
           if (_errorMessage != null)
             Padding(
@@ -202,24 +218,13 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
                       final isPth = item['is_pth'] == true;
 
                       Color progressColor;
-                      if (isPth) {
-                        // For high PTH, lower percentage is better
-                        if (percentage >= 50) {
-                          progressColor = Colors.red;
-                        } else if (percentage >= 25) {
-                          progressColor = Colors.orange;
-                        } else {
-                          progressColor = Colors.green;
-                        }
+                      // All indicators now represent abnormalities (worse/dropping), so lower percentage is better
+                      if (percentage >= 50) {
+                        progressColor = Colors.red;
+                      } else if (percentage >= 25) {
+                        progressColor = Colors.orange;
                       } else {
-                        // For target met indicators, higher percentage is better
-                        if (percentage >= 80) {
-                          progressColor = Colors.green;
-                        } else if (percentage >= 50) {
-                          progressColor = Colors.orange;
-                        } else {
-                          progressColor = Colors.red;
-                        }
+                        progressColor = Colors.green;
                       }
 
                       return Card(
@@ -271,9 +276,7 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
                                     MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
-                                    isPth
-                                        ? 'Patients with High PTH: $met'
-                                        : 'Patients meeting target: $met',
+                                    'Affected patients: $met',
                                     style: TextStyle(
                                       color: Colors.grey.shade700,
                                     ),
@@ -281,11 +284,7 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
                                   Text(
                                     isPth
                                         ? 'Total active: $total'
-                                        : (_useActivePatientsTotal &&
-                                                name != 'Kt/V >= 1.2' &&
-                                                name != 'URR >= 65%')
-                                            ? 'Total active: $total'
-                                            : 'Total tested: $total',
+                                        : 'Total active: $total',
                                     style: TextStyle(
                                       color: Colors.grey.shade700,
                                     ),

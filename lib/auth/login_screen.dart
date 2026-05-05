@@ -87,6 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _staffIdController,
                   keyboardType: TextInputType.number,
+                  obscureText: true,
                   decoration: const InputDecoration(
                     labelText: 'Medical Staff ID',
                     border: OutlineInputBorder(),

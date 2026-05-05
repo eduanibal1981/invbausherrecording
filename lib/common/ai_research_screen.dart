@@ -16,11 +16,11 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
   final _apiKeyController = TextEditingController();
   final _promptController = TextEditingController();
   final List<Map<String, dynamic>> _chatHistory = [];
-  
+
   bool _hasApiKey = false;
   bool _isLoading = false;
   String _loadingMessage = '';
-  
+
   // Data caching
   String? _cachedCsvData;
 
@@ -44,16 +44,18 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
   Future<void> _saveApiKey() async {
     final key = _apiKeyController.text.trim();
     if (key.isEmpty) return;
-    
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('gemini_api_key', key);
-    
+
     setState(() {
       _hasApiKey = true;
     });
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('API Key Saved. You can now start researching.')),
+      const SnackBar(
+        content: Text('API Key Saved. You can now start researching.'),
+      ),
     );
   }
 
@@ -78,7 +80,9 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
 
     try {
       // We use the new RPC to get the latest labs for all active patients
-      final response = await Supabase.instance.client.rpc('get_all_latest_labs');
+      final response = await Supabase.instance.client.rpc(
+        'get_all_latest_labs_nonnull',
+      );
       final labs = List<Map<String, dynamic>>.from(response);
 
       if (labs.isEmpty) {
@@ -88,13 +92,15 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
       // Convert to CSV string
       final headers = labs.first.keys.toList();
       final StringBuffer csvBuffer = StringBuffer();
-      
+
       // Write headers
       csvBuffer.writeln(headers.join(','));
-      
+
       // Write rows
       for (var row in labs) {
-        final rowValues = headers.map((h) => row[h]?.toString() ?? '').join(',');
+        final rowValues = headers
+            .map((h) => row[h]?.toString() ?? '')
+            .join(',');
         csvBuffer.writeln(rowValues);
       }
 
@@ -124,10 +130,11 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
       final dataCsv = await _fetchAndFormatData();
 
       // 3. Construct the message
-      final fullPrompt = "Data context (CSV):\n$dataCsv\n\nUser Question:\n$prompt";
+      final fullPrompt =
+          "Data context (CSV):\n$dataCsv\n\nUser Question:\n$prompt";
 
       GenerateContentResponse? response;
-      
+
       try {
         final model = GenerativeModel(
           model: 'gemini-2.5-flash',
@@ -139,8 +146,8 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
             "Identify patients by their pcid. Never reveal actual patient names, only pcid. "
             "If calculating averages or statistics, show your logic briefly. "
             "IMPORTANT RULE: Never mention that data was provided to you as a CSV or inside a prompt. "
-            "Speak naturally as if you are directly querying and reading the clinic's secure database yourself."
-          )
+            "Speak naturally as if you are directly querying and reading the clinic's secure database yourself.",
+          ),
         );
         response = await model.generateContent([Content.text(fullPrompt)]);
       } catch (e) {
@@ -150,17 +157,22 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
             model: 'gemini-2.5-pro',
             apiKey: apiKey,
           );
-          final fallbackPrompt = "You are a helpful data analyst AI integrated directly into a nephrology clinic's database system. You will be provided with the latest patient lab results and their vascular access type (vaccess). Analyze the data and answer the user's questions clearly and concisely. Identify patients by their pcid. Never reveal actual patient names, only pcid. If calculating averages or statistics, show your logic briefly. IMPORTANT RULE: Never mention that data was provided to you as a CSV or inside a prompt. Speak naturally as if you are directly querying and reading the clinic's secure database yourself.\n\n$fullPrompt";
-          response = await fallbackModel.generateContent([Content.text(fallbackPrompt)]);
+          final fallbackPrompt =
+              "You are a helpful data analyst AI integrated directly into a nephrology clinic's database system. You will be provided with the latest patient lab results and their vascular access type (vaccess). Analyze the data and answer the user's questions clearly and concisely. Identify patients by their pcid. Never reveal actual patient names, only pcid. If calculating averages or statistics, show your logic briefly. IMPORTANT RULE: Never mention that data was provided to you as a CSV or inside a prompt. Speak naturally as if you are directly querying and reading the clinic's secure database yourself.\n\n$fullPrompt";
+          response = await fallbackModel.generateContent([
+            Content.text(fallbackPrompt),
+          ]);
         } catch (innerError) {
-           throw Exception("Both gemini-1.5-flash and gemini-1.5-pro failed. Error: $e");
+          throw Exception(
+            "Both gemini-1.5-flash and gemini-1.5-pro failed. Error: $e",
+          );
         }
       }
 
       setState(() {
         _chatHistory.add({
           'role': 'model',
-          'text': response?.text ?? 'No response generated.'
+          'text': response?.text ?? 'No response generated.',
         });
         _isLoading = false;
       });
@@ -168,17 +180,21 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
       // Try to fetch available models to help the user debug
       String availableModelsStr = "";
       try {
-        final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey');
+        final url = Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey',
+        );
         final httpResponse = await http.get(url);
         if (httpResponse.statusCode == 200) {
-          availableModelsStr = "\n\nAvailable Models for your key: ${httpResponse.body}";
+          availableModelsStr =
+              "\n\nAvailable Models for your key: ${httpResponse.body}";
         }
       } catch (_) {}
 
       setState(() {
         _chatHistory.add({
           'role': 'model',
-          'text': 'Error: $e$availableModelsStr\n\nPlease ensure your Google AI Studio API key has access to these models.'
+          'text':
+              'Error: $e$availableModelsStr\n\nPlease ensure your Google AI Studio API key has access to these models.',
         });
         _isLoading = false;
       });
@@ -242,7 +258,10 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              child: const Text('Save API Key & Start', style: TextStyle(fontSize: 16)),
+              child: const Text(
+                'Save API Key & Start',
+                style: TextStyle(fontSize: 16),
+              ),
             ),
           ],
         ),
@@ -271,7 +290,7 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
             ],
           ),
         ),
-        
+
         // Chat History
         Expanded(
           child: _chatHistory.isEmpty
@@ -287,9 +306,11 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
                   itemBuilder: (context, index) {
                     final message = _chatHistory[index];
                     final isUser = message['role'] == 'user';
-                    
+
                     return Align(
-                      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                      alignment: isUser
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
                       child: Container(
                         constraints: BoxConstraints(
                           maxWidth: MediaQuery.of(context).size.width * 0.8,
@@ -297,10 +318,16 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
                         margin: const EdgeInsets.only(bottom: 16),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: isUser ? Colors.teal.shade100 : Colors.grey.shade200,
+                          color: isUser
+                              ? Colors.teal.shade100
+                              : Colors.grey.shade200,
                           borderRadius: BorderRadius.circular(16).copyWith(
-                            bottomRight: isUser ? const Radius.circular(0) : const Radius.circular(16),
-                            bottomLeft: !isUser ? const Radius.circular(0) : const Radius.circular(16),
+                            bottomRight: isUser
+                                ? const Radius.circular(0)
+                                : const Radius.circular(16),
+                            bottomLeft: !isUser
+                                ? const Radius.circular(0)
+                                : const Radius.circular(16),
                           ),
                         ),
                         child: SelectableText(
@@ -320,9 +347,16 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
                 const SizedBox(width: 8),
-                Text(_loadingMessage, style: const TextStyle(color: Colors.grey)),
+                Text(
+                  _loadingMessage,
+                  style: const TextStyle(color: Colors.grey),
+                ),
               ],
             ),
           ),
@@ -350,7 +384,10 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(24)),
                     ),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
                   ),
                   onSubmitted: (_) => _askAI(),
                   enabled: !_isLoading,
