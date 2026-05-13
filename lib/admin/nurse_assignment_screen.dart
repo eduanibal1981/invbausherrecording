@@ -230,7 +230,7 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
 
           await client
               .from('groupsofpatients')
-              .update({'staffid': null, 'ismain': false})
+              .update({'staffid': null})
               .match({'ghall': hall, 'gday': day, 'gshift': shift, 'staffid': staffId});
 
           // Safety cleanup: ensure stale nurse IDs are removed for this slot.
@@ -247,7 +247,7 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
         for (var a in additions) {
           await client
               .from('groupsofpatients')
-              .update({'staffid': a['staffid'], 'ismain': true})
+              .update({'staffid': a['staffid']})
               .match({'ghall': a['ghall'], 'gday': a['gday'], 'gshift': a['gshift']});
         }
       }
@@ -379,27 +379,32 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
   }
 
   void _showAddAssignmentDialog(int staffId, String nurseName) {
-    // Get currently assigned slots for this nurse (real + staged)
-    final realAssignments = _nurseAssignments[staffId] ?? [];
-    final stagedAdds = _stagedAdditions[staffId] ?? [];
-    final deletedKeys = _stagedDeletions[staffId] ?? {};
+    // Build set of ALL keys currently assigned to ANY nurse (real + staged)
+    final allAssignedKeys = <String>{};
+    
+    // Add real assignments for all nurses, excluding those staged for deletion
+    for (var entry in _nurseAssignments.entries) {
+      final sId = entry.key;
+      final deleted = _stagedDeletions[sId] ?? {};
+      for (var a in entry.value) {
+        final key = '${a['ghall']}-${a['gday']}-${a['gshift']}';
+        if (!deleted.contains(key)) {
+          allAssignedKeys.add(key);
+        }
+      }
+    }
+    
+    // Add staged additions from all nurses
+    for (var adds in _stagedAdditions.values) {
+      for (var a in adds) {
+        allAssignedKeys.add('${a['ghall']}-${a['gday']}-${a['gshift']}');
+      }
+    }
 
-    final currentAssignmentsKeys = realAssignments
-        .where((a) => !deletedKeys.contains('${a['ghall']}-${a['gday']}-${a['gshift']}'))
-        .map((a) => '${a['ghall']}-${a['gday']}-${a['gshift']}')
-        .toList();
-
-    currentAssignmentsKeys.addAll(
-      stagedAdds.map((a) => '${a['ghall']}-${a['gday']}-${a['gshift']}'),
-    );
-
-    final assignedKeysSet = currentAssignmentsKeys.toSet();
-
-    // Filter available slots (not already assigned to this nurse)
+    // Filter available slots (not already assigned to ANY nurse)
     final availableForNurse = _availableSlots.where((slot) {
-      final key =
-          '${slot['ghall']}-${slot['gday']}-${slot['gshift']}';
-      return !assignedKeysSet.contains(key);
+      final key = '${slot['ghall']}-${slot['gday']}-${slot['gshift']}';
+      return !allAssignedKeys.contains(key);
     }).toList();
 
     if (availableForNurse.isEmpty) {
