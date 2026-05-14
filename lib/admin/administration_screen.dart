@@ -271,6 +271,15 @@ class _AdministrationScreenState extends State<AdministrationScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('System Administration'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
+        ],
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
       ),

@@ -344,6 +344,7 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
 
     return Scaffold(
       appBar: AppBar(
+
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -359,6 +360,13 @@ class _VascularUploadScreenState extends State<VascularUploadScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
           // Background upload indicator
           if (uploadingCount > 0)
             Container(

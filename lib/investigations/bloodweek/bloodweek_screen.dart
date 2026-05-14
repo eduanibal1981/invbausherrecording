@@ -193,7 +193,8 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                         },
                       )
                     : null,
-                title: Column(
+
+        title: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -221,6 +222,13 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
                   ],
                 ),
                 actions: [
+                  IconButton(
+                    icon: const Icon(Icons.home),
+                    tooltip: 'Return to Home',
+                    onPressed: () {
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                    },
+                  ),
                   // Navigation buttons (only if patientList is provided)
                   if (_hasNavigation) ...[
                     IconButton(

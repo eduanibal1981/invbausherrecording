@@ -176,6 +176,13 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.assignment_ind),
             tooltip: 'View Nurse Assignments',
             onPressed: () {

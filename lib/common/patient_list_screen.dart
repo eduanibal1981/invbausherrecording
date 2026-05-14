@@ -1430,13 +1430,11 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                                     '\nEntered by: $enteredBy';
                                               }
 
-                                              Color circleColor = Colors
-                                                  .grey
-                                                  .shade400; // Pending / Not collected yet
-                                              if (isGroupCollected) {
-                                                circleColor = isRecorded
-                                                    ? Colors.green
-                                                    : Colors.red.shade200;
+                                              Color circleColor = Colors.grey.shade400; // Pending / Not collected yet
+                                              if (isRecorded) {
+                                                circleColor = Colors.green;
+                                              } else if (isGroupCollected) {
+                                                circleColor = Colors.red.shade200;
                                               }
 
                                               return Tooltip(

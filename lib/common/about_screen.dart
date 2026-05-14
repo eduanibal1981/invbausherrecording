@@ -8,6 +8,15 @@ class AboutScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('About'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
+        ],
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
       ),

@@ -228,6 +228,15 @@ class _ScheduleLabsReportScreenState extends State<ScheduleLabsReportScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Schedule Labs Report'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

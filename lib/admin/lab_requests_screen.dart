@@ -132,6 +132,13 @@ class _LabRequestsScreenState extends State<LabRequestsScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _isLoading ? null : _fetchDueLabRequests,
             tooltip: 'Refresh',

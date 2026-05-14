@@ -172,6 +172,15 @@ class _ShareIntakeScreenState extends State<ShareIntakeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Import Shared Images ($sharedCount)'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
+        ],
       ),
       body: !_isAuthenticated
           ? _buildLoginRequired()

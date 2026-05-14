@@ -207,6 +207,13 @@ class _AIResearchScreenState extends State<AIResearchScreen> {
       appBar: AppBar(
         title: const Text('AI Research Assistant'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
           if (_hasApiKey)
             IconButton(
               icon: const Icon(Icons.key_off),

@@ -961,6 +961,13 @@ class _VascularManagementScreenState extends State<VascularManagementScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: _isLoading ? null : _fetchData,

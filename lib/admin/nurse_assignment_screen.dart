@@ -571,6 +571,13 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
           if (_stagedAdditions.isNotEmpty || _stagedDeletions.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 8),
@@ -1044,9 +1051,11 @@ class _NurseAssignmentScreenState extends State<NurseAssignmentScreen> {
                 final a = entry.value;
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: Colors.yellow.shade50,
                   decoration: BoxDecoration(
-                    border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                    color: Colors.yellow.shade50,
+                    border: Border(
+                      top: BorderSide(color: Colors.grey.shade200),
+                    ),
                   ),
                   child: Row(
                     children: [

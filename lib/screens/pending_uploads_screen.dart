@@ -53,6 +53,13 @@ class _PendingUploadsScreenState extends State<PendingUploadsScreen> {
       appBar: AppBar(
         title: const Text('Pending Uploads'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
           if (totalCount > 0)
             Padding(
               padding: const EdgeInsets.only(right: 16.0),

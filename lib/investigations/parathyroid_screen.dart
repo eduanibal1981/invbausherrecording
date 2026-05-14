@@ -195,6 +195,15 @@ class _ParathyroidScreenState extends State<ParathyroidScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+                actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
+        ],
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

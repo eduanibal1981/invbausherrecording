@@ -136,6 +136,13 @@ class _MedicationsScreenState extends State<MedicationsScreen> {
         backgroundColor: const Color.fromARGB(255, 43, 138, 161),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.home),
+            tooltip: 'Return to Home',
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: FilledButton.icon(
