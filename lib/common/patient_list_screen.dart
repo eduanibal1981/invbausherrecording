@@ -62,6 +62,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
   Map<int, String?> _bwEnteredBy = {};
   Map<int, bool> _bwIsCollected = {};
   Map<int, String?> _bwMonth = {};
+  Map<int, int?> _bwYear = {};
 
   // For sorting abnormalities "Show Rest"
   Map<int, double?> _latestLabHb = {};
@@ -161,7 +162,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
     try {
       final response = await Supabase.instance.client
           .from('vw_patients_bw_status')
-          .select('pcid, entered_by_name, ismcollected, bw_month');
+          .select('pcid, entered_by_name, ismcollected, bw_month, bw_year');
 
       final list = List<Map<String, dynamic>>.from(response);
       _bwEnteredBy = {
@@ -174,6 +175,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
       };
       _bwMonth = {
         for (var item in list) item['pcid'] as int: item['bw_month'] as String?,
+      };
+      _bwYear = {
+        for (var item in list) item['pcid'] as int: item['bw_year'] as int?,
       };
 
       final labsResponse = await Supabase.instance.client.rpc(
@@ -1412,11 +1416,13 @@ class _PatientListScreenState extends State<PatientListScreen> {
                                               final pcid =
                                                   patient['pcid'] as int;
                                               final lastBw = _bwMonth[pcid];
+                                              final lastBwYear = _bwYear[pcid];
                                               final currentMonth = DateFormat(
                                                 'MMMM',
                                               ).format(DateTime.now());
+                                              final currentYear = DateTime.now().year;
                                               final isRecorded =
-                                                  lastBw == currentMonth;
+                                                  lastBw == currentMonth && lastBwYear == currentYear;
                                               final enteredBy =
                                                   _bwEnteredBy[pcid];
                                               final isGroupCollected =
@@ -1424,8 +1430,7 @@ class _PatientListScreenState extends State<PatientListScreen> {
 
                                               String tooltipMsg =
                                                   'Last BW: ${lastBw ?? 'N/A'}';
-                                              if (isRecorded &&
-                                                  enteredBy != null) {
+                                              if (enteredBy != null) {
                                                 tooltipMsg +=
                                                     '\nEntered by: $enteredBy';
                                               }
