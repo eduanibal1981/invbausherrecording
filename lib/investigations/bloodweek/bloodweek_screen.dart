@@ -66,7 +66,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
     'ureapost': 'Post',
     'effurr': 'URR',
     'effktv': 'Kt/V',
-    'machine_ktv': 'Machine KT/V',
+    'machine_ktv': 'OCM KT/V',
     'ufdone': 'UF Done',
     'timetaken': 'Time Taken',
     'wtpost': 'WT Post',
