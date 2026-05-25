@@ -48,6 +48,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
     'ureapost',
     'effurr',
     'effktv',
+    'machine_ktv',
     'ufdone',
     'timetaken',
     'wtpost',
@@ -65,6 +66,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
     'ureapost': 'Post',
     'effurr': 'URR',
     'effktv': 'Kt/V',
+    'machine_ktv': 'Machine KT/V',
     'ufdone': 'UF Done',
     'timetaken': 'Time Taken',
     'wtpost': 'WT Post',
@@ -437,6 +439,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
               'wtpost',
               'effurr',
               'effktv',
+              'machine_ktv',
             ]),
           ],
         ),
@@ -514,6 +517,7 @@ class _BloodWeekScreenState extends State<BloodWeekScreen> {
         'ureapost': (0.0, 300.0), // Urea Post: 0-300 mg/dL
         'effurr': (0.0, 100.0), // URR: 0-100%
         'effktv': (0.0, 3.0), // Kt/V: 0-3
+        'machine_ktv': (0.0, 3.0), // Machine KT/V: 0-3
         'ufdone': (0.0, 10.0), // UF Done: 0-10 L
         'timetaken': (0.0, 600.0), // Time: 0-600 min
         'wtpost': (0.0, 200.0), // Weight: 0-200 kg
