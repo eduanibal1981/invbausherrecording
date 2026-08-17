@@ -426,6 +426,10 @@ class _FilterScreenState extends State<FilterScreen> {
                               child: Text('Ca < 2.1 or > 2.6'),
                             ),
                             DropdownMenuItem(
+                              value: 'ca_high',
+                              child: Text('Ca > 2.5 (≥ 2.6)'),
+                            ),
+                            DropdownMenuItem(
                               value: 'ktv_dropping',
                               child: Text('KT/V < 1.2 & Dropped'),
                             ),
