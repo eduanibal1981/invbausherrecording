@@ -71,11 +71,47 @@ class _ScheduleLabsReportScreenState extends State<ScheduleLabsReportScreen> {
         labsByPcid[lab['pcid'] as int] = lab;
       }
 
+      final now = DateTime.now();
+      final currentMonthName = DateFormat('MMMM').format(now).toLowerCase();
+      final currentMonthInt = now.month;
+      final currentYear = now.year;
+
       List<Map<String, dynamic>> finalData = [];
       for (var s in schedules) {
         final pcid = s['pcid'] as int;
         final patientName = s['patients']['name'] ?? 'Unknown';
         final labInfo = labsByPcid[pcid] ?? {};
+
+        // Bloodwork month check (HB, K, Ca, PO4, URR, KT/V)
+        bool isBwThisMonth = false;
+        final bwMonth = (labInfo['bw_month'] ?? '').toString().trim().toLowerCase();
+        final bwYear = int.tryParse((labInfo['bw_year'] ?? '').toString());
+        if (bwMonth == currentMonthName && (bwYear == null || bwYear == currentYear)) {
+          isBwThisMonth = true;
+        } else if (labInfo['bw_date'] != null) {
+          final dt = DateTime.tryParse(labInfo['bw_date'].toString());
+          if (dt != null && dt.month == currentMonthInt && dt.year == currentYear) {
+            isBwThisMonth = true;
+          }
+        }
+
+        // PTH month check
+        bool isPthThisMonth = false;
+        if (labInfo['pth_date'] != null) {
+          final dt = DateTime.tryParse(labInfo['pth_date'].toString());
+          if (dt != null && dt.month == currentMonthInt && dt.year == currentYear) {
+            isPthThisMonth = true;
+          }
+        }
+
+        // Iron profile month check (TSAT, Ferritin)
+        bool isIronThisMonth = false;
+        if (labInfo['iron_date'] != null) {
+          final dt = DateTime.tryParse(labInfo['iron_date'].toString());
+          if (dt != null && dt.month == currentMonthInt && dt.year == currentYear) {
+            isIronThisMonth = true;
+          }
+        }
 
         finalData.add({
           'pcid': pcid,
@@ -89,6 +125,9 @@ class _ScheduleLabsReportScreenState extends State<ScheduleLabsReportScreen> {
           'pthresult': labInfo['pthresult'],
           'irontsat': labInfo['irontsat'],
           'ironferritin': labInfo['ironferritin'],
+          'is_bw_this_month': isBwThisMonth,
+          'is_pth_this_month': isPthThisMonth,
+          'is_iron_this_month': isIronThisMonth,
         });
       }
 
@@ -111,10 +150,31 @@ class _ScheduleLabsReportScreenState extends State<ScheduleLabsReportScreen> {
     }
   }
 
+  pw.Widget _buildPdfCell(
+    String text, {
+    required bool isBold,
+    pw.Alignment alignment = pw.Alignment.centerLeft,
+  }) {
+    final hasValue = text.isNotEmpty && text != '-';
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3),
+      alignment: alignment,
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(
+          fontSize: 9.5,
+          fontWeight:
+              (isBold && hasValue) ? pw.FontWeight.bold : pw.FontWeight.normal,
+          color: (isBold && hasValue) ? PdfColors.black : PdfColors.grey700,
+        ),
+      ),
+    );
+  }
+
   Future<Uint8List> _generatePdf(PdfPageFormat format) async {
     final font = await PdfGoogleFonts.cairoRegular();
     final fontBold = await PdfGoogleFonts.cairoBold();
-    
+
     final pdf = pw.Document(
       theme: pw.ThemeData.withFont(
         base: font,
@@ -123,11 +183,9 @@ class _ScheduleLabsReportScreenState extends State<ScheduleLabsReportScreen> {
     );
 
     final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
+    final currentMonthLabel =
+        DateFormat('MMMM yyyy').format(DateTime.now());
 
-    // Create chunks of data for pagination if necessary
-    // pw.Table can handle some automatic pagination, but it's good to keep it simple.
-    
-    // Convert data to table rows
     final tableHeaders = [
       'ID',
       'Name',
@@ -142,22 +200,6 @@ class _ScheduleLabsReportScreenState extends State<ScheduleLabsReportScreen> {
       'Ferritin'
     ];
 
-    final tableData = _reportData.map((data) {
-      return [
-        data['pcid'].toString(),
-        data['name'].toString(),
-        data['cbchb']?.toString() ?? '-',
-        data['ue1k']?.toString() ?? '-',
-        data['bca']?.toString() ?? '-',
-        data['bpo4']?.toString() ?? '-',
-        data['effurr']?.toString() ?? '-',
-        data['effktv']?.toString() ?? '-',
-        data['pthresult']?.toString() ?? '-',
-        data['irontsat']?.toString() ?? '-',
-        data['ironferritin']?.toString() ?? '-',
-      ];
-    }).toList();
-
     pdf.addPage(
       pw.MultiPage(
         pageFormat: format,
@@ -165,45 +207,41 @@ class _ScheduleLabsReportScreenState extends State<ScheduleLabsReportScreen> {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('Schedule Labs Report',
-                  style: pw.TextStyle(
-                      fontSize: 24, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                'Schedule Labs Report',
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 8),
               pw.Text('Generated: $dateStr'),
-              pw.Text('Filter: '
-                  'Hall: ${widget.hallName ?? 'All'}, '
-                  'Day: ${widget.day ?? 'All'}, '
-                  'Shift: ${widget.shift ?? 'All'}'),
-              pw.SizedBox(height: 16),
+              pw.Text(
+                'Filter: '
+                'Hall: ${widget.hallName ?? 'All'}, '
+                'Day: ${widget.day ?? 'All'}, '
+                'Shift: ${widget.shift ?? 'All'}',
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                '* Bold values indicate labs recorded in current month ($currentMonthLabel)',
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontStyle: pw.FontStyle.italic,
+                  color: PdfColors.grey700,
+                ),
+              ),
+              pw.SizedBox(height: 12),
             ],
           );
         },
         build: (pw.Context context) {
           return [
-            pw.TableHelper.fromTextArray(
-              headers: tableHeaders,
-              data: tableData,
+            pw.Table(
               border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
-              headerStyle: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
-              ),
-              headerDecoration: const pw.BoxDecoration(
-                color: PdfColors.teal,
-              ),
-              cellAlignment: pw.Alignment.centerLeft,
-              cellStyle: const pw.TextStyle(fontSize: 10),
-              rowDecoration: const pw.BoxDecoration(
-                border: pw.Border(
-                  bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
-                ),
-              ),
-              oddRowDecoration: const pw.BoxDecoration(
-                color: PdfColors.grey100,
-              ),
               columnWidths: {
                 0: const pw.FlexColumnWidth(1), // ID
-                1: const pw.FlexColumnWidth(3), // Name
+                1: const pw.FlexColumnWidth(2.8), // Name
                 2: const pw.FlexColumnWidth(1), // HB
                 3: const pw.FlexColumnWidth(1), // K
                 4: const pw.FlexColumnWidth(1), // Ca
@@ -214,6 +252,95 @@ class _ScheduleLabsReportScreenState extends State<ScheduleLabsReportScreen> {
                 9: const pw.FlexColumnWidth(1), // TSAT
                 10: const pw.FlexColumnWidth(1.2), // Ferritin
               },
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.teal),
+                  children: tableHeaders.map((header) {
+                    return pw.Container(
+                      padding: const pw.EdgeInsets.symmetric(
+                        vertical: 6,
+                        horizontal: 3,
+                      ),
+                      alignment: pw.Alignment.centerLeft,
+                      child: pw.Text(
+                        header,
+                        style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.white,
+                          fontSize: 10,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                ..._reportData.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final data = entry.value;
+                  final isBwBold = data['is_bw_this_month'] == true;
+                  final isPthBold = data['is_pth_this_month'] == true;
+                  final isIronBold = data['is_iron_this_month'] == true;
+                  final rowBg =
+                      index % 2 == 1 ? PdfColors.grey100 : PdfColors.white;
+
+                  return pw.TableRow(
+                    decoration: pw.BoxDecoration(
+                      color: rowBg,
+                      border: const pw.Border(
+                        bottom: pw.BorderSide(
+                          color: PdfColors.grey300,
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                    children: [
+                      _buildPdfCell(
+                        data['pcid']?.toString() ?? '',
+                        isBold: false,
+                      ),
+                      _buildPdfCell(
+                        data['name']?.toString() ?? '',
+                        isBold: false,
+                      ),
+                      _buildPdfCell(
+                        data['cbchb']?.toString() ?? '-',
+                        isBold: isBwBold,
+                      ),
+                      _buildPdfCell(
+                        data['ue1k']?.toString() ?? '-',
+                        isBold: isBwBold,
+                      ),
+                      _buildPdfCell(
+                        data['bca']?.toString() ?? '-',
+                        isBold: isBwBold,
+                      ),
+                      _buildPdfCell(
+                        data['bpo4']?.toString() ?? '-',
+                        isBold: isBwBold,
+                      ),
+                      _buildPdfCell(
+                        data['effurr']?.toString() ?? '-',
+                        isBold: isBwBold,
+                      ),
+                      _buildPdfCell(
+                        data['effktv']?.toString() ?? '-',
+                        isBold: isBwBold,
+                      ),
+                      _buildPdfCell(
+                        data['pthresult']?.toString() ?? '-',
+                        isBold: isPthBold,
+                      ),
+                      _buildPdfCell(
+                        data['irontsat']?.toString() ?? '-',
+                        isBold: isIronBold,
+                      ),
+                      _buildPdfCell(
+                        data['ironferritin']?.toString() ?? '-',
+                        isBold: isIronBold,
+                      ),
+                    ],
+                  );
+                }),
+              ],
             ),
           ];
         },
