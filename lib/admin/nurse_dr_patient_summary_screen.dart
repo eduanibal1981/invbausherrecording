@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -972,442 +972,261 @@ class _NurseDrPatientSummaryScreenState
                                     ),
 
                                     DataCell(
-
                                       Text(
-
                                         row['staff_name']?.toString() ?? '-',
-
                                         style: textStyle,
-
                                       ),
-
                                     ),
-
                                     DataCell(
-
                                       _buildPercentageCell(
-
                                         row['bw_entered_this_month'],
-
                                         row['total_patients'],
-
-                                        textStyle,
-
-                                        false,
-
-                                      ),
-
-                                    ),
-
-                                    DataCell(
-
-                                      _buildAssignedGroupsCell(
-
                                         row['assigned_groups'],
-
-                                        row['staff_name'],
-
-                                        false,
-
-                                      ),
-
-                                    ),
-
-                                    DataCell(
-
-                                      Text(
-
-                                        row['total_patients']?.toString() ??
-
-                                            '0',
-
-                                        style: textStyle,
-
-                                      ),
-
-                                    ),
-
-                                    DataCell(
-
-                                      _buildBwEnteredCell(
-
-                                        row['bw_entered_this_month'],
-
-                                        row['total_patients'],
-
                                         textStyle,
-
                                         false,
-
                                       ),
-
                                     ),
-
+                                    DataCell(
+                                      _buildAssignedGroupsCell(
+                                        row['assigned_groups'],
+                                        row['staff_name'],
+                                        false,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Text(
+                                        row['total_patients']?.toString() ??
+                                            '0',
+                                        style: textStyle,
+                                      ),
+                                    ),
+                                    DataCell(
+                                      _buildBwEnteredCell(
+                                        row['bw_entered_this_month'],
+                                        row['total_patients'],
+                                        row['assigned_groups'],
+                                        textStyle,
+                                        false,
+                                      ),
+                                    ),
                                   ],
-
                                 );
-
                               }).toList(),
-
                             ),
-
                           ),
-
                         ),
-
                       ),
-
               ),
-
             ],
-
           );
-
         },
-
       ),
-
     );
-
   }
-
-
 
   double _calculateAchievementPct(Map<String, dynamic> row) {
-
     final enteredCount =
-
         int.tryParse(row['bw_entered_this_month']?.toString() ?? '0') ?? 0;
-
     if (_achievementTarget <= 0) return 0;
-
     return (enteredCount / _achievementTarget) * 100;
-
   }
-
-
 
   Widget _buildTotalSummaryCard(Map<String, dynamic> row) {
-
     final int totalPatients =
-
         int.tryParse(row['total_patients']?.toString() ?? '0') ?? 0;
-
     final int bwEntered =
-
         int.tryParse(row['bw_entered_this_month']?.toString() ?? '0') ?? 0;
-
     final double totalPct = totalPatients > 0
-
         ? (bwEntered / totalPatients) * 100
-
         : 0;
 
-
-
     return Container(
-
       width: double.infinity,
-
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-
       padding: const EdgeInsets.all(14),
-
       decoration: BoxDecoration(
-
         color: Colors.amber.shade50,
-
         borderRadius: BorderRadius.circular(12),
-
         border: Border.all(color: Colors.amber.shade300),
-
       ),
-
       child: Wrap(
-
         spacing: 20,
-
         runSpacing: 8,
-
         crossAxisAlignment: WrapCrossAlignment.center,
-
         children: [
-
           Row(
-
             mainAxisSize: MainAxisSize.min,
-
             children: [
-
               Icon(Icons.summarize, color: Colors.amber.shade800, size: 18),
-
               const SizedBox(width: 8),
-
               Text(
-
                 'Overall Total',
-
                 style: TextStyle(
-
                   fontWeight: FontWeight.bold,
-
                   color: Colors.amber.shade900,
-
                 ),
-
               ),
-
             ],
-
           ),
-
           _buildTotalMetric('Patients', '$totalPatients'),
-
           _buildTotalMetric('BW Entered', '$bwEntered'),
-
           _buildTotalMetric('Achievement', '${totalPct.toStringAsFixed(1)}%'),
-
           _buildTotalMetric('Period', '$_selectedMonth $_selectedYear'),
-
         ],
-
       ),
-
     );
-
   }
-
-
 
   Widget _buildTotalMetric(String label, String value) {
-
     return RichText(
-
       text: TextSpan(
-
         style: const TextStyle(color: Colors.black87, fontSize: 13),
-
         children: [
-
           TextSpan(
-
             text: '$label: ',
-
             style: const TextStyle(fontWeight: FontWeight.w600),
-
           ),
-
           TextSpan(
-
             text: value,
-
             style: const TextStyle(fontWeight: FontWeight.bold),
-
           ),
-
         ],
-
       ),
-
     );
-
   }
-
-
 
   Widget _buildPercentageCell(
-
     dynamic bwEntered,
-
     dynamic totalPatients,
-
+    dynamic assignedGroups,
     TextStyle style,
-
     bool isTotal,
-
   ) {
-
     final int enteredCount = int.tryParse(bwEntered?.toString() ?? '0') ?? 0;
-
     final int totalCount = int.tryParse(totalPatients?.toString() ?? '0') ?? 0;
+    final bool hasAssignedGroups = assignedGroups != null &&
+        assignedGroups.toString().trim().isNotEmpty;
+    final bool isUnassigned =
+        !isTotal && (totalCount == 0 || !hasAssignedGroups);
 
-
+    // If unassigned staff who entered lab data: show star badge instead of percentage
+    if (isUnassigned) {
+      if (enteredCount > 0) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.amber.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.amber.shade400),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.star, size: 15, color: Colors.amber.shade800),
+            ],
+          ),
+        );
+      } else {
+        return Text('-', style: style.copyWith(color: Colors.grey));
+      }
+    }
 
     // For TOTAL row: use actual total patients
-
     // For individual nurses: use achievement target
-
     final double pct;
-
     if (isTotal) {
-
       // TOTAL row: actual percentage of BW entered vs total patients
-
       pct = totalCount > 0 ? (enteredCount / totalCount) * 100 : 0;
-
     } else {
-
       // Individual nurses: percentage based on achievement target
-
       pct = _achievementTarget > 0
-
           ? (enteredCount / _achievementTarget) * 100
-
           : 0;
-
     }
-
-
 
     // Color coding for percentage (supports >100%)
-
     Color textColor = style.color ?? Colors.black;
-
     Color bgColor = Colors.grey.shade100;
-
     IconData? icon;
 
-
-
     if (!isTotal) {
-
       if (pct >= 100) {
-
         textColor = Colors.purple.shade700; // Exceptional - over 100%
-
         bgColor = Colors.purple.shade50;
-
         icon = Icons.star;
-
       } else if (pct >= 80) {
-
         textColor = Colors.green.shade700; // Excellent
-
         bgColor = Colors.green.shade50;
-
         icon = Icons.check_circle;
-
       } else if (pct >= 50) {
-
         textColor = Colors.orange.shade800; // Good
-
         bgColor = Colors.orange.shade50;
-
       } else if (pct > 0) {
-
         textColor = Colors.blue.shade700; // In progress
-
         bgColor = Colors.blue.shade50;
-
       } else {
-
         textColor = Colors.red.shade700; // Not started
-
         bgColor = Colors.red.shade50;
-
       }
-
     }
 
-
-
     return Container(
-
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-
       decoration: isTotal
-
           ? null
-
           : BoxDecoration(
-
               color: bgColor,
-
               borderRadius: BorderRadius.circular(12),
-
               border: Border.all(color: textColor.withOpacity(0.3)),
-
             ),
-
       child: Row(
-
         mainAxisSize: MainAxisSize.min,
-
         children: [
-
           if (!isTotal && icon != null) Icon(icon, size: 14, color: textColor),
-
           if (!isTotal && icon != null) const SizedBox(width: 4),
-
           Text(
-
             '${pct.toStringAsFixed(1)}%',
-
             style: style.copyWith(
-
               color: isTotal ? null : textColor,
-
               fontWeight: isTotal ? null : FontWeight.bold,
-
             ),
-
           ),
-
         ],
-
       ),
-
     );
-
   }
-
-
 
   Widget _buildBwEnteredCell(
-
     dynamic entered,
-
     dynamic total,
-
+    dynamic assignedGroups,
     TextStyle style,
-
     bool isTotal,
-
   ) {
-
     final int enteredCount = int.tryParse(entered?.toString() ?? '0') ?? 0;
-
     final int totalCount = int.tryParse(total?.toString() ?? '0') ?? 0;
-
-
+    final bool hasAssignedGroups = assignedGroups != null &&
+        assignedGroups.toString().trim().isNotEmpty;
+    final bool isUnassigned =
+        !isTotal && (totalCount == 0 || !hasAssignedGroups);
 
     // For TOTAL row: show entered / total patients
-
+    // For unassigned staff: show entered count only (no assigned target)
     // For individual nurses: show entered / achievement target
-
     final String displayText = isTotal
-
         ? '$enteredCount / $totalCount'
-
-        : '$enteredCount / $_achievementTarget';
-
-
+        : isUnassigned
+            ? '$enteredCount'
+            : '$enteredCount / $_achievementTarget';
 
     return Text(
-
       displayText,
-
       style: style.copyWith(
-
         color: enteredCount > 0 ? Colors.green.shade700 : null,
-
+        fontWeight: isUnassigned && enteredCount > 0 ? FontWeight.w600 : null,
       ),
-
     );
-
   }
-
-
 
   Widget _buildAssignedGroupsCell(
 

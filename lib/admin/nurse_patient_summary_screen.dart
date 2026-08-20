@@ -545,6 +545,7 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                                       _buildPercentageCell(
                                         row['bw_entered_this_month'],
                                         row['total_patients'],
+                                        row['assigned_groups'],
                                         textStyle,
                                         false,
                                       ),
@@ -567,6 +568,7 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
                                       _buildBwEnteredCell(
                                         row['bw_entered_this_month'],
                                         row['total_patients'],
+                                        row['assigned_groups'],
                                         textStyle,
                                         false,
                                       ),
@@ -660,11 +662,38 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
   Widget _buildPercentageCell(
     dynamic bwEntered,
     dynamic totalPatients,
+    dynamic assignedGroups,
     TextStyle style,
     bool isTotal,
   ) {
     final int enteredCount = int.tryParse(bwEntered?.toString() ?? '0') ?? 0;
     final int totalCount = int.tryParse(totalPatients?.toString() ?? '0') ?? 0;
+    final bool hasAssignedGroups = assignedGroups != null &&
+        assignedGroups.toString().trim().isNotEmpty;
+    final bool isUnassigned =
+        !isTotal && (totalCount == 0 || !hasAssignedGroups);
+
+    // If unassigned staff who entered lab data: show star badge instead of percentage
+    if (isUnassigned) {
+      if (enteredCount > 0) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.amber.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.amber.shade400),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.star, size: 15, color: Colors.amber.shade800),
+            ],
+          ),
+        );
+      } else {
+        return Text('-', style: style.copyWith(color: Colors.grey));
+      }
+    }
 
     // For TOTAL row: use actual total patients
     // For individual nurses: use achievement target
@@ -712,7 +741,7 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
           : BoxDecoration(
               color: bgColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: textColor.withOpacity(0.3)),
+              border: Border.all(color: textColor.withValues(alpha: 0.3)),
             ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -734,22 +763,31 @@ class _NursePatientSummaryScreenState extends State<NursePatientSummaryScreen> {
   Widget _buildBwEnteredCell(
     dynamic entered,
     dynamic total,
+    dynamic assignedGroups,
     TextStyle style,
     bool isTotal,
   ) {
     final int enteredCount = int.tryParse(entered?.toString() ?? '0') ?? 0;
     final int totalCount = int.tryParse(total?.toString() ?? '0') ?? 0;
+    final bool hasAssignedGroups = assignedGroups != null &&
+        assignedGroups.toString().trim().isNotEmpty;
+    final bool isUnassigned =
+        !isTotal && (totalCount == 0 || !hasAssignedGroups);
 
     // For TOTAL row: show entered / total patients
+    // For unassigned staff: show entered count only (no assigned target)
     // For individual nurses: show entered / achievement target
     final String displayText = isTotal
         ? '$enteredCount / $totalCount'
-        : '$enteredCount / $_achievementTarget';
+        : isUnassigned
+            ? '$enteredCount'
+            : '$enteredCount / $_achievementTarget';
 
     return Text(
       displayText,
       style: style.copyWith(
         color: enteredCount > 0 ? Colors.green.shade700 : null,
+        fontWeight: isUnassigned && enteredCount > 0 ? FontWeight.w600 : null,
       ),
     );
   }
