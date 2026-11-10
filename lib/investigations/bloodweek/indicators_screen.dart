@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'bloodweek_controller.dart'; // To get months list
+import 'clinical_indicator_optimized_screen.dart';
 
 class IndicatorsScreen extends StatefulWidget {
   const IndicatorsScreen({super.key});
@@ -114,6 +115,18 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
         title: const Text('Clinical Indicators'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.speed),
+            tooltip: 'Clinical Indicator Optimized',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ClinicalIndicatorOptimizedScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.home),
             tooltip: 'Return to Home',
             onPressed: () {
@@ -126,6 +139,34 @@ class _IndicatorsScreenState extends State<IndicatorsScreen> {
       ),
       body: Column(
         children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Colors.amber.shade50,
+            child: Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: Colors.amber, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Clinical Indicator Optimized is available',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const ClinicalIndicatorOptimizedScreen(),
+                      ),
+                    );
+                  },
+                  child: const Text('Try Optimized'),
+                ),
+              ],
+            ),
+          ),
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.teal.shade50,

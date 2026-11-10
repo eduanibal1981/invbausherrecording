@@ -5,13 +5,13 @@ import 'filter_screen.dart';
 import 'patient_dashboard_screen_v2.dart';
 import '../admin/administration_screen.dart';
 import '../admin/nurse_patient_summary_screen.dart';
-import '../admin/nurse_dr_patient_summary_screen.dart';
 import '../admin/lab_requests_screen.dart';
 import 'about_screen.dart';
 import '../screens/pending_uploads_screen.dart';
 import '../services/background_upload_service.dart';
 import '../vascandecg/vascular_management_screen.dart';
 import '../investigations/bloodweek/indicators_screen.dart';
+import '../investigations/bloodweek/clinical_indicator_optimized_screen.dart';
 import 'ai_research_screen.dart';
 
 /// Filter mode for patient list when navigating from other screens
@@ -363,8 +363,12 @@ class _PatientListScreenState extends State<PatientListScreen> {
           rpcName = 'get_patients_with_abnormal_ca';
         } else if (labAbnormality == 'ca_high') {
           rpcName = 'get_patients_with_high_ca';
+        } else if (labAbnormality == 'ca_low') {
+          rpcName = 'get_patients_with_low_ca';
         } else if (labAbnormality == 'ktv_dropping') {
           rpcName = 'get_patients_with_dropping_ktv';
+        } else if (labAbnormality == 'ocm_ktv_dropping') {
+          rpcName = 'get_patients_with_dropping_ocm_ktv';
         } else if (labAbnormality == 'urr_dropping') {
           rpcName = 'get_patients_with_dropping_urr';
         } else if (labAbnormality == 'tsat_low') {
@@ -910,20 +914,6 @@ class _PatientListScreenState extends State<PatientListScreen> {
             icon: const Icon(Icons.leaderboard),
             tooltip: 'Nurse Patient Summary',
             onPressed: () {
-              final isGlobalAdmin =
-                  _currentStaff != null &&
-                  (_currentStaff!['medicalstaffid'] == 59726 ||
-                      _currentStaff!['medicalstaffid'] == 66931 ||
-                      _currentStaff!['medicalstaffid'] == 57492);
-
-              // if (isGlobalAdmin) {
-              //   Navigator.push(
-              //     context,
-              //     MaterialPageRoute(
-              //       builder: (context) => const NurseDrPatientSummaryScreen(),
-              //     ),
-              //   );
-              // } else {
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -976,6 +966,15 @@ class _PatientListScreenState extends State<PatientListScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => const IndicatorsScreen(),
+                    ),
+                  );
+                }
+                if (value == 'indicators_optimized') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          const ClinicalIndicatorOptimizedScreen(),
                     ),
                   );
                 }
@@ -1113,6 +1112,16 @@ class _PatientListScreenState extends State<PatientListScreen> {
                       Icon(Icons.bar_chart, color: Colors.blueGrey, size: 20),
                       SizedBox(width: 12),
                       Text("Indicators (Ca, PO4, etc)"),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'indicators_optimized',
+                  child: Row(
+                    children: [
+                      Icon(Icons.speed, color: Colors.teal, size: 20),
+                      SizedBox(width: 12),
+                      Text("Clinical Indicator Optimized"),
                     ],
                   ),
                 ),
@@ -1557,7 +1566,9 @@ class _PatientListScreenState extends State<PatientListScreen> {
         if (value == 'pth_rising') return 'Labs: PTH > 59 & Rose';
         if (value == 'ca_abnormal') return 'Labs: Ca < 2.1 or > 2.6';
         if (value == 'ca_high') return 'Labs: Ca > 2.5 (≥ 2.6)';
+        if (value == 'ca_low') return 'Labs: Ca < 2.1';
         if (value == 'ktv_dropping') return 'Labs: KT/V < 1.2 & Dropped';
+        if (value == 'ocm_ktv_dropping') return 'Labs: OCM KT/V < 1.2 & Dropped';
         if (value == 'urr_dropping') return 'Labs: URR < 65 & Dropped';
         if (value == 'tsat_low') return 'Labs: Transferrin Sat < 20%';
         return 'Labs: $value';

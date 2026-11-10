@@ -430,8 +430,16 @@ class _FilterScreenState extends State<FilterScreen> {
                               child: Text('Ca > 2.5 (≥ 2.6)'),
                             ),
                             DropdownMenuItem(
+                              value: 'ca_low',
+                              child: Text('Ca < 2.1'),
+                            ),
+                            DropdownMenuItem(
                               value: 'ktv_dropping',
                               child: Text('KT/V < 1.2 & Dropped'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'ocm_ktv_dropping',
+                              child: Text('OCM KT/V < 1.2 & Dropped'),
                             ),
                             DropdownMenuItem(
                               value: 'urr_dropping',
